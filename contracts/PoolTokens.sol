@@ -6,11 +6,12 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 import "reserve/contracts/plugins/assets/OracleLib.sol";
 import "reserve/contracts/libraries/Fixed.sol";
+import "hardhat/console.sol";
 
 interface ICurvePool {
-    function coins() external view returns (address[] calldata);
+    function coins(uint) external view returns (address);
 
-    function balances() external view returns (uint256[] calldata);
+    function balances(uint) external view returns (uint256);
 
     function get_virtual_price() external view returns (uint256);
 
@@ -23,6 +24,8 @@ contract PoolTokens {
 
     error WrongIndex(uint8 maxLength);
     error NoToken(uint8 tokenNumber);
+
+    uint8 constant MAX_UINT8 = 255;
 
     uint48 public immutable oracleTimeout; // {s} Seconds that an oracle value is considered valid
     ICurvePool public immutable curvePool;
@@ -57,21 +60,29 @@ contract PoolTokens {
     uint8 internal immutable _t2feedsLength;
     uint8 internal immutable _t3feedsLength;
 
-    constructor(address[][] memory tokenFeeds, ICurvePool _curvePool, uint48 _oracleTimeout) {
+    constructor(
+        ERC20 _lpToken,
+        address[] memory poolTokens,
+        address[][] memory tokenFeeds,
+        ICurvePool _curvePool,
+        uint48 _oracleTimeout
+    ) {
         require(_oracleTimeout > 0, "oracleTimeout zero");
-        require(maxFeedsLength(tokenFeeds) <= 3, "price feeds limited to 3");
         require(address(_curvePool) != address(0), "curvePool address is zero");
-        address[] memory poolTokens = _curvePool.coins();
+        for (uint8 i = 0; i < poolTokens.length; i++) {
+            require(poolTokens[i] == _curvePool.coins(i), "tokens must match index in pool");
+        }
+        tokensLength = uint8(poolTokens.length);
+        require(maxFeedsLength(tokenFeeds) <= 3, "price feeds limited to 3");
         require(
-            tokenFeeds.length == poolTokens.length && minFeedsLength(tokenFeeds) > 0,
-            "each token needs at least 1 price feed feed"
+            tokenFeeds.length == tokensLength && minFeedsLength(tokenFeeds) > 0,
+            "each token needs at least 1 price feed"
         );
 
         curvePool = _curvePool;
         oracleTimeout = _oracleTimeout;
-        tokensLength = uint8(poolTokens.length);
 
-        lpToken = ERC20(curvePool.token());
+        lpToken = _lpToken;
         lpTokenDecimals = lpToken.decimals();
 
         // Solidity does not support immutable arrays. This is a hack to get the equivalent of
@@ -117,12 +128,11 @@ contract PoolTokens {
     }
 
     function totalBalancesValue() public view returns (uint192) {
-        uint256[] memory balances = curvePool.balances();
         uint192 totalBalances = 0;
 
-        for (uint8 i = 0; i < balances.length; i++) {
+        for (uint8 i = 0; i < tokensLength; i++) {
             ERC20 token = getToken(i);
-            uint192 balance = shiftl_toFix(balances[i], -int8(token.decimals()));
+            uint192 balance = shiftl_toFix(curvePool.balances(i), -int8(token.decimals()));
             totalBalances += balance.mul(token0price());
         }
 
@@ -200,7 +210,7 @@ contract PoolTokens {
     }
 
     function minFeedsLength(address[][] memory tokenFeeds) internal pure returns (uint8) {
-        uint8 minLength;
+        uint8 minLength = MAX_UINT8;
         for (uint8 i = 0; i < tokenFeeds.length; i++) {
             minLength = uint8(Math.min(minLength, tokenFeeds[i].length));
         }

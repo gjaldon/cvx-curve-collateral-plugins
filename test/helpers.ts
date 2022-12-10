@@ -1,24 +1,32 @@
-import hre, { ethers } from "hardhat";
-import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
+import hre, { ethers } from 'hardhat'
+import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 
 // Mainnet Addresses
-export const COMP = "0xc00e94Cb662C3520282E6f5717214004A7f26888";
-export const RSR = "0x320623b8e4ff03373931769a31fc52a4e78b5d70";
+export const THREE_POOL = '0xbebc44782c7db0a1a60cb6fe97d0b483032ff1c7'
+export const THREE_POOL_TOKEN = '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490'
+export const DAI_USD_FEED = '0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9'
+export const USDC_USD_FEED = '0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6'
+export const USDT_USD_FEED = '0x3E7d1eAB13ad0104d2750B8863b489D65364e32D'
+export const COMP = '0xc00e94Cb662C3520282E6f5717214004A7f26888'
+export const RSR = '0x320623b8e4ff03373931769a31fc52a4e78b5d70'
+export const DAI = '0x6b175474e89094c44da98b954eedeac495271d0f'
+export const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
+export const USDT = '0xdac17f958d2ee523a2206206994597c13d831ec7'
 
-export const ORACLE_TIMEOUT = 86400n; // 24 hours in seconds
-export const DEFAULT_THRESHOLD = 5n * 10n ** 16n; // 0.05
-export const DELAY_UNTIL_DEFAULT = 86400n;
-export const MAX_TRADE_VOL = 1000000n;
+export const ORACLE_TIMEOUT = 86400n // 24 hours in seconds
+export const DEFAULT_THRESHOLD = 5n * 10n ** 16n // 0.05
+export const DELAY_UNTIL_DEFAULT = 86400n
+export const MAX_TRADE_VOL = 1000000n
 
-export const FIX_ONE = 1n * 10n ** 18n;
+export const FIX_ONE = 1n * 10n ** 18n
 
-export type Numeric = number | bigint;
+export type Numeric = number | bigint
 
 export const exp = (i: Numeric, d: Numeric = 0): bigint => {
-  return BigInt(i) * 10n ** BigInt(d);
-};
+  return BigInt(i) * 10n ** BigInt(d)
+}
 
-type ImpersonationFunction<T> = (signer: SignerWithAddress) => Promise<T>;
+type ImpersonationFunction<T> = (signer: SignerWithAddress) => Promise<T>
 
 /* whileImpersonating(address, f):
 
@@ -38,19 +46,13 @@ type ImpersonationFunction<T> = (signer: SignerWithAddress) => Promise<T>;
    - Calls rToken.setBasketsNeeded _as_ the basketHandler contract,
    - Checks that that call emits the event 'BasketNeededChanged'
 */
-export const whileImpersonating = async (
-  address: string,
-  f: ImpersonationFunction<void>
-) => {
+export const whileImpersonating = async (address: string, f: ImpersonationFunction<void>) => {
   // Set maximum ether balance at address
   await hre.network.provider.request({
-    method: "hardhat_setBalance",
-    params: [
-      address,
-      "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-    ],
-  });
-  const signer = await ethers.getImpersonatedSigner(address);
+    method: 'hardhat_setBalance',
+    params: [address, '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'],
+  })
+  const signer = await ethers.getImpersonatedSigner(address)
 
-  await f(signer);
-};
+  await f(signer)
+}

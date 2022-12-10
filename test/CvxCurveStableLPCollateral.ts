@@ -1,13 +1,14 @@
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
+import { deployCollateral } from './fixtures'
+import { THREE_POOL } from './helpers'
 
 describe('CvxCurveStableLPCollateral', () => {
-  it('does things', async () => {
-    const booster = await ethers.getContractAt(
-      'ConvexBooster',
-      '0xF403C135812408BFbE8713b5A23a04b3D48AAE31'
-    )
+  describe('lpTokenPrice', () => {
+    it('returns price per lp token', async () => {
+      const collateral = await deployCollateral()
 
-    console.log(await booster.poolInfo(8))
+      expect(await collateral.lpTokenPrice()).to.eq(1022155557920163600n)
+    })
   })
 })

@@ -11,11 +11,14 @@ import "./PoolTokens.sol";
 /**
  * @title CvxCurveStableLPCollateral
  */
-contract CvxCurveStableLPCollateral is PoolTokens {
+contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
     using FixLib for uint192;
 
     struct Configuration {
-        AggregatorV3Interface[][] tokensPriceFeeds;
+        ERC20 lpToken;
+        address[] poolTokens;
+        address[][] tokensPriceFeeds;
+        ERC20 wrappedStakeToken;
         ICurvePool curvePool;
         bytes32 targetName;
         uint48 oracleTimeout;
@@ -26,10 +29,7 @@ contract CvxCurveStableLPCollateral is PoolTokens {
     }
 
     IERC20Metadata public immutable erc20;
-    uint8 public immutable token0decimals;
-    uint8 public immutable token1decimals;
     uint8 public immutable erc20Decimals;
-    uint48 public immutable oracleTimeout; // {s} Seconds that an oracle value is considered valid
     uint192 public immutable maxTradeVolume; // {UoA}
     uint192 public immutable fallbackPrice; // {UoA}
     uint192 public immutable defaultThreshold; // {%} e.g. 0.05
@@ -39,19 +39,30 @@ contract CvxCurveStableLPCollateral is PoolTokens {
     uint256 private _whenDefault = NEVER;
     bytes32 public immutable targetName;
 
-    constructor(Configuration memory config) {
+    constructor(
+        Configuration memory config
+    )
+        PoolTokens(
+            config.lpToken,
+            config.poolTokens,
+            config.tokensPriceFeeds,
+            config.curvePool,
+            config.oracleTimeout
+        )
+    {
+        require(address(config.wrappedStakeToken) != address(0), "address is zero");
         require(config.fallbackPrice > 0, "fallback price zero");
         require(config.maxTradeVolume > 0, "invalid max trade volume");
         require(config.defaultThreshold > 0, "defaultThreshold zero");
         require(config.targetName != bytes32(0), "targetName missing");
         require(config.delayUntilDefault > 0, "delayUntilDefault zero");
 
+        erc20 = config.wrappedStakeToken;
         targetName = config.targetName;
         delayUntilDefault = config.delayUntilDefault;
-        fallbackPrice = config.fallbackPrice;
         erc20Decimals = erc20.decimals();
         maxTradeVolume = config.maxTradeVolume;
-        oracleTimeout = config.oracleTimeout;
+        fallbackPrice = config.fallbackPrice;
         defaultThreshold = config.defaultThreshold;
 
         prevReferencePrice = refPerTok();
@@ -82,7 +93,7 @@ contract CvxCurveStableLPCollateral is PoolTokens {
         prevReferencePrice = referencePrice;
         CollateralStatus newStatus = status();
         if (oldStatus != newStatus) {
-            emit DefaultStatusChanged(oldStatus, newStatus);
+            emit CollateralStatusChanged(oldStatus, newStatus);
         }
         // No interactions beyond the initial refresher
     }
@@ -125,7 +136,7 @@ contract CvxCurveStableLPCollateral is PoolTokens {
 
     /// @return {ref/tok} Quantity of whole reference units per whole collateral tokens
     function refPerTok() public view returns (uint192) {
-        return curvePool.get_virtual_price();
+        return _safeWrap(curvePool.get_virtual_price());
     }
 
     /// @return {target/ref} Quantity of whole target units per whole reference unit in the peg
