@@ -50,7 +50,10 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
             config.oracleTimeout
         )
     {
-        require(address(config.wrappedStakeToken) != address(0), "address is zero");
+        require(
+            address(config.wrappedStakeToken) != address(0),
+            "wrappedStakeToken address is zero"
+        );
         require(config.fallbackPrice > 0, "fallback price zero");
         require(config.maxTradeVolume > 0, "invalid max trade volume");
         require(config.defaultThreshold > 0, "defaultThreshold zero");
@@ -117,7 +120,8 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
     }
 
     function strictPrice() public view returns (uint192) {
-        return FIX_ONE;
+        uint192 _totalSupply = shiftl_toFix(lpToken.totalSupply(), -int8(lpTokenDecimals));
+        return totalBalancesValue().div(_totalSupply);
     }
 
     /// Can return 0

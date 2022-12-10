@@ -68,6 +68,7 @@ contract PoolTokens {
         uint48 _oracleTimeout
     ) {
         require(_oracleTimeout > 0, "oracleTimeout zero");
+        require(address(_lpToken) != address(0), "lp token address is zero");
         require(address(_curvePool) != address(0), "curvePool address is zero");
         for (uint8 i = 0; i < poolTokens.length; i++) {
             require(poolTokens[i] == _curvePool.coins(i), "tokens must match index in pool");
@@ -120,11 +121,6 @@ contract PoolTokens {
         _t3feed1 = AggregatorV3Interface(token3Feeds.length > 1 ? token3Feeds[1] : address(0));
         _t3feed2 = AggregatorV3Interface(token3Feeds.length > 2 ? token3Feeds[2] : address(0));
         _t3feedsLength = uint8(token3Feeds.length);
-    }
-
-    function lpTokenPrice() public view returns (uint192) {
-        uint192 _totalSupply = shiftl_toFix(lpToken.totalSupply(), -int8(lpTokenDecimals));
-        return totalBalancesValue().div(_totalSupply);
     }
 
     function totalBalancesValue() public view returns (uint192) {
