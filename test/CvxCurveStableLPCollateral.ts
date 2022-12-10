@@ -1,7 +1,18 @@
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { deployCollateral } from './fixtures'
-import { THREE_POOL, USDC, USDC_USD_FEED } from './helpers'
+import {
+  DAI_USD_FEED,
+  THREE_POOL,
+  USDC,
+  USDC_USD_FEED,
+  exp,
+  whileImpersonating,
+  DAI_HOLDER,
+  DAI,
+  USDT_USD_FEED,
+  CollateralStatus,
+} from './helpers'
 
 describe('CvxCurveStableLPCollateral', () => {
   describe('constructor validation', () => {
@@ -78,11 +89,151 @@ describe('CvxCurveStableLPCollateral', () => {
     })
   })
 
-  describe('strictPrice', () => {
+  describe('prices', () => {
     it('returns price per lp token', async () => {
       const collateral = await deployCollateral()
 
-      expect(await collateral.strictPrice()).to.eq(1022155557920163600n)
+      expect(await collateral.strictPrice()).to.eq(1022160092729999097n)
+    })
+
+    it('price changes as USDC and USDT prices change in Curve 3Pool', async () => {
+      const MockV3AggregatorFactory = await ethers.getContractFactory('MockV3Aggregator')
+      const mockUSDCfeed = await MockV3AggregatorFactory.deploy(6, exp(1, 6))
+      const mockUSDTfeed = await MockV3AggregatorFactory.deploy(6, exp(1, 6))
+
+      const collateral = await deployCollateral({
+        tokensPriceFeeds: [[DAI_USD_FEED], [mockUSDCfeed.address], [mockUSDTfeed.address]],
+      })
+      let prevPrice = await collateral.strictPrice()
+
+      await mockUSDCfeed.updateAnswer(exp(2, 6))
+      let newPrice = await collateral.strictPrice()
+      expect(newPrice).to.be.gt(prevPrice)
+      prevPrice = newPrice
+
+      await mockUSDTfeed.updateAnswer(exp(2, 6))
+      newPrice = await collateral.strictPrice()
+      expect(newPrice).to.be.gt(prevPrice)
+    })
+
+    it('price changes as swaps occur', async () => {
+      const collateral = await deployCollateral()
+      const [swapper] = await ethers.getSigners()
+      let prevPrice = await collateral.strictPrice()
+
+      const dai = await ethers.getContractAt('ERC20', DAI)
+      const threePool = await ethers.getContractAt('ICurvePool', THREE_POOL)
+      await dai.approve(threePool.address, ethers.constants.MaxUint256)
+
+      await whileImpersonating(DAI_HOLDER, async (signer) => {
+        const balance = await dai.balanceOf(signer.address)
+        await dai.connect(signer).transfer(swapper.address, balance)
+      })
+
+      await expect(
+        threePool.exchange(0, 1, exp(100_000, 18), exp(98_000, 6))
+      ).to.changeTokenBalance(dai, swapper.address, `-${exp(100_000, 18)}`)
+
+      let newPrice = await collateral.strictPrice()
+      expect(prevPrice).to.be.lt(newPrice)
+      prevPrice = newPrice
+
+      const usdc = await ethers.getContractAt('ERC20', USDC)
+      await usdc.approve(threePool.address, ethers.constants.MaxUint256)
+      await expect(threePool.exchange(1, 2, exp(90_000, 6), exp(89_000, 6))).to.changeTokenBalance(
+        usdc,
+        swapper.address,
+        `-${exp(90_000, 6)}`
+      )
+
+      newPrice = await collateral.strictPrice()
+      expect(prevPrice).to.be.lt(newPrice)
+    })
+
+    it('reverts if USDC price is zero', async () => {
+      const MockV3AggregatorFactory = await ethers.getContractFactory('MockV3Aggregator')
+      const chainlinkFeed = await MockV3AggregatorFactory.deploy(6, exp(1, 6))
+      const collateral = await deployCollateral({
+        tokensPriceFeeds: [[DAI_USD_FEED], [chainlinkFeed.address], [USDT_USD_FEED]],
+      })
+
+      // Set price of USDC to 0
+      const updateAnswerTx = await chainlinkFeed.updateAnswer(0)
+      await updateAnswerTx.wait()
+      // Check price of token
+      await expect(collateral.strictPrice()).to.be.revertedWithCustomError(
+        collateral,
+        'PriceOutsideRange'
+      )
+      // Fallback price is returned
+      const [isFallback, price] = await collateral.price(true)
+      expect(isFallback).to.equal(true)
+      expect(price).to.equal(await collateral.fallbackPrice())
+      // When refreshed, sets status to Unpriced
+      await collateral.refresh()
+      expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
+    })
+
+    it('reverts if DAI price is zero', async () => {
+      const MockV3AggregatorFactory = await ethers.getContractFactory('MockV3Aggregator')
+      const chainlinkFeed = await MockV3AggregatorFactory.deploy(18, exp(1, 18))
+      const collateral = await deployCollateral({
+        tokensPriceFeeds: [[chainlinkFeed.address], [USDC_USD_FEED], [USDT_USD_FEED]],
+      })
+
+      // Set price of DAI to 0
+      const updateAnswerTx = await chainlinkFeed.updateAnswer(0)
+      await updateAnswerTx.wait()
+      // Check price of token
+      await expect(collateral.strictPrice()).to.be.revertedWithCustomError(
+        collateral,
+        'PriceOutsideRange'
+      )
+      // Fallback price is returned
+      const [isFallback, price] = await collateral.price(true)
+      expect(isFallback).to.equal(true)
+      expect(price).to.equal(await collateral.fallbackPrice())
+      // When refreshed, sets status to Unpriced
+      await collateral.refresh()
+      expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
+    })
+
+    it('reverts if USDT price is zero', async () => {
+      const MockV3AggregatorFactory = await ethers.getContractFactory('MockV3Aggregator')
+      const chainlinkFeed = await MockV3AggregatorFactory.deploy(6, exp(1, 6))
+      const collateral = await deployCollateral({
+        tokensPriceFeeds: [[DAI_USD_FEED], [USDC_USD_FEED], [chainlinkFeed.address]],
+      })
+
+      // Set price of USDT to 0
+      const updateAnswerTx = await chainlinkFeed.updateAnswer(0)
+      await updateAnswerTx.wait()
+      // Check price of token
+      await expect(collateral.strictPrice()).to.be.revertedWithCustomError(
+        collateral,
+        'PriceOutsideRange'
+      )
+      // Fallback price is returned
+      const [isFallback, price] = await collateral.price(true)
+      expect(isFallback).to.equal(true)
+      expect(price).to.equal(await collateral.fallbackPrice())
+      // When refreshed, sets status to Unpriced
+      await collateral.refresh()
+      expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
+    })
+
+    it('reverts in case of invalid timestamp', async () => {
+      const MockV3AggregatorFactory = await ethers.getContractFactory('MockV3Aggregator')
+      const chainlinkFeed = await MockV3AggregatorFactory.deploy(6, exp(1, 6))
+      const collateral = await deployCollateral({
+        tokensPriceFeeds: [[DAI_USD_FEED], [USDC_USD_FEED], [chainlinkFeed.address]],
+      })
+      await chainlinkFeed.setInvalidTimestamp()
+      // Check price of token
+      await expect(collateral.strictPrice()).to.be.revertedWithCustomError(collateral, 'StalePrice')
+      // When refreshed, sets status to Unpriced
+      await collateral.refresh()
+      expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
     })
   })
 })

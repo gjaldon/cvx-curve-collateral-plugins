@@ -13,12 +13,20 @@ export const DAI = '0x6b175474e89094c44da98b954eedeac495271d0f'
 export const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 export const USDT = '0xdac17f958d2ee523a2206206994597c13d831ec7'
 
+export const DAI_HOLDER = '0x16b34ce9a6a6f7fc2dd25ba59bf7308e7b38e186'
+
 export const ORACLE_TIMEOUT = 86400n // 24 hours in seconds
 export const DEFAULT_THRESHOLD = 5n * 10n ** 16n // 0.05
 export const DELAY_UNTIL_DEFAULT = 86400n
 export const MAX_TRADE_VOL = 1000000n
 
 export const FIX_ONE = 1n * 10n ** 18n
+
+export enum CollateralStatus {
+  SOUND,
+  IFFY,
+  DISABLED,
+}
 
 export type Numeric = number | bigint
 

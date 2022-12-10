@@ -16,6 +16,8 @@ interface ICurvePool {
     function get_virtual_price() external view returns (uint256);
 
     function token() external view returns (address);
+
+    function exchange(int128, int128, uint256, uint256) external;
 }
 
 contract PoolTokens {
@@ -129,7 +131,7 @@ contract PoolTokens {
         for (uint8 i = 0; i < tokensLength; i++) {
             ERC20 token = getToken(i);
             uint192 balance = shiftl_toFix(curvePool.balances(i), -int8(token.decimals()));
-            totalBalances += balance.mul(token0price());
+            totalBalances += balance.mul(tokenPrice(i));
         }
 
         return totalBalances;
@@ -141,6 +143,14 @@ contract PoolTokens {
         if (index == 1) return token1;
         if (index == 2) return token2;
         return token3;
+    }
+
+    function tokenPrice(uint8 index) public view returns (uint192) {
+        if (index >= tokensLength) revert WrongIndex(tokensLength - 1);
+        if (index == 0) return token0price();
+        if (index == 1) return token1price();
+        if (index == 2) return token2price();
+        return token3price();
     }
 
     function token0price() public view returns (uint192) {

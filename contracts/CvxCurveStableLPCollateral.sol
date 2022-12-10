@@ -81,18 +81,13 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         uint192 referencePrice = refPerTok();
         if (referencePrice < prevReferencePrice) {
             markStatus(CollateralStatus.DISABLED);
+        } else {
+            if (pegNotMaintained()) {
+                markStatus(CollateralStatus.IFFY);
+            } else {
+                markStatus(CollateralStatus.SOUND);
+            }
         }
-        // } else {
-        //     if (
-        //         pegNotMaintained(this.token0price) ||
-        //         pegNotMaintained(this.token1price) ||
-        //         pegNotMaintained(this.tokensRatio)
-        //     ) {
-        //         markStatus(CollateralStatus.IFFY);
-        //     } else {
-        //         markStatus(CollateralStatus.SOUND);
-        //     }
-        // }
         prevReferencePrice = referencePrice;
         CollateralStatus newStatus = status();
         if (oldStatus != newStatus) {
@@ -101,22 +96,23 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         // No interactions beyond the initial refresher
     }
 
-    function pegNotMaintained(
-        function() external view returns (uint192) priceFunc
-    ) internal view returns (bool) {
-        try priceFunc() returns (uint192 p) {
-            // Check for soft default of underlying reference token
-            uint192 peg = targetPerRef();
-            // D18{UoA/ref}= D18{UoA/ref} * D18{1} / D18
-            uint192 delta = (peg * defaultThreshold) / FIX_ONE; // D18{UoA/ref}
-            // If the price is below the default-threshold price, default eventually
-            // uint192(+/-) is the same as Fix.plus/minus
-            return (p < peg - delta || p > peg + delta);
-        } catch (bytes memory errData) {
-            // see: docs/solidity-style.md#Catching-Empty-Data
-            if (errData.length == 0) revert(); // solhint-disable-line reason-string
-            return true;
+    function pegNotMaintained() internal view returns (bool) {
+        for (uint8 i = 0; i < tokensLength; i++) {
+            try this.tokenPrice(i) returns (uint192 p) {
+                // Check for soft default of underlying reference token
+                uint192 peg = targetPerRef();
+                // D18{UoA/ref}= D18{UoA/ref} * D18{1} / D18
+                uint192 delta = (peg * defaultThreshold) / FIX_ONE; // D18{UoA/ref}
+                // If the price is below the default-threshold price, default eventually
+                // uint192(+/-) is the same as Fix.plus/minus
+                if (p < peg - delta || p > peg + delta) return true;
+            } catch (bytes memory errData) {
+                // see: docs/solidity-style.md#Catching-Empty-Data
+                if (errData.length == 0) revert(); // solhint-disable-line reason-string
+                return true;
+            }
         }
+        return false;
     }
 
     function strictPrice() public view returns (uint192) {
