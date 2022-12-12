@@ -1,5 +1,6 @@
 import '@typechain/hardhat'
 import '@nomiclabs/hardhat-ethers'
+import '@nomiclabs/hardhat-vyper'
 import '@nomicfoundation/hardhat-chai-matchers'
 import '@nomicfoundation/hardhat-toolbox'
 import 'hardhat-dependency-compiler'
@@ -52,6 +53,9 @@ const config: HardhatUserConfig = {
         settings: { optimizer: { enabled: false } },
       },
     ],
+  },
+  vyper: {
+    version: '0.2.4',
   },
   dependencyCompiler: {
     keep: true, // Needed to be true for slither to work
