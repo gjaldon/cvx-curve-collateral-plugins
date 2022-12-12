@@ -14,6 +14,7 @@ export const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 export const USDT = '0xdac17f958d2ee523a2206206994597c13d831ec7'
 
 export const DAI_HOLDER = '0x16b34ce9a6a6f7fc2dd25ba59bf7308e7b38e186'
+export const THREE_POOL_HOLDER = '0xd632f22692fac7611d2aa1c0d552930d43caed3b'
 
 export const ORACLE_TIMEOUT = 86400n // 24 hours in seconds
 export const DEFAULT_THRESHOLD = 5n * 10n ** 16n // 0.05

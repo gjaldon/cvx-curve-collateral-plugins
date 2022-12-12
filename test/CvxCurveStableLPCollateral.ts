@@ -15,6 +15,9 @@ import {
   USDT_USD_FEED,
   CollateralStatus,
   USDT,
+  THREE_POOL_HOLDER,
+  THREE_POOL_TOKEN,
+  FIX_ONE,
 } from './helpers'
 
 describe('CvxCurveStableLPCollateral', () => {
@@ -453,6 +456,65 @@ describe('CvxCurveStableLPCollateral', () => {
       await expect(collateral.refresh()).to.not.emit(collateral, 'CollateralStatusChanged')
       expect(await collateral.status()).to.equal(CollateralStatus.DISABLED)
       expect(await collateral.whenDefault()).to.equal(prevWhenDefault)
+    })
+  })
+
+  describe('refPerTok', () => {
+    // Swaps and huge swings in liquidity should not decrease refPerTok
+    it('is mostly increasing', async () => {
+      const collateral = await deployCollateral()
+      let prevRefPerTok = await collateral.refPerTok()
+      const [swapper] = await ethers.getSigners()
+      const threePool = await ethers.getContractAt('StableSwap3Pool', THREE_POOL)
+
+      const dai = await ethers.getContractAt('ERC20', DAI)
+      await dai.approve(threePool.address, ethers.constants.MaxUint256)
+      await whileImpersonating(DAI_HOLDER, async (signer) => {
+        const balance = await dai.balanceOf(signer.address)
+        await dai.connect(signer).transfer(swapper.address, balance)
+      })
+
+      await expect(
+        threePool.exchange(0, 1, exp(100_000, 18), exp(99_000, 6))
+      ).to.changeTokenBalance(dai, swapper.address, `-${exp(100_000, 18)}`)
+
+      let newRefPerTok = await collateral.refPerTok()
+      expect(prevRefPerTok).to.be.lt(newRefPerTok)
+      prevRefPerTok = newRefPerTok
+
+      // Remove 30% of Liquidity. THREE_POOL_HOLDER ~30% of the supply of WBTC-ETH LP token
+      const lpToken = await ethers.getContractAt('ERC20', THREE_POOL_TOKEN)
+      await whileImpersonating(THREE_POOL_HOLDER, async (signer) => {
+        const balance = await lpToken.balanceOf(signer.address)
+        await lpToken.connect(signer).transfer(swapper.address, balance)
+      })
+      const balance = await lpToken.balanceOf(swapper.address)
+      await lpToken.approve(threePool.address, ethers.constants.MaxUint256)
+      await expect(threePool.remove_liquidity(balance, [0, 0, 0])).to.changeTokenBalance(
+        lpToken,
+        swapper,
+        `-${balance}`
+      )
+
+      newRefPerTok = await collateral.refPerTok()
+      expect(prevRefPerTok).to.be.lt(newRefPerTok)
+      prevRefPerTok = newRefPerTok
+
+      const usdc = await ethers.getContractAt('ERC20', USDC)
+      const usdt = await ethers.getContractAt('ERC20', USDT)
+
+      const daiBal = await dai.balanceOf(swapper.address)
+      const usdcBal = await usdc.balanceOf(swapper.address)
+      const usdtBal = await usdt.balanceOf(swapper.address)
+      await usdc.approve(threePool.address, ethers.constants.MaxUint256)
+      await usdt.approve(threePool.address, ethers.constants.MaxUint256)
+
+      await expect(
+        threePool.add_liquidity([daiBal, usdcBal, usdtBal], [0, 0, 0])
+      ).to.changeTokenBalance(dai, swapper.address, `-${daiBal}`)
+
+      newRefPerTok = await collateral.refPerTok()
+      expect(prevRefPerTok).to.be.lt(newRefPerTok)
     })
   })
 })
