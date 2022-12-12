@@ -1,5 +1,7 @@
 import { expect } from 'chai'
 import { ethers } from 'hardhat'
+import { time } from '@nomicfoundation/hardhat-network-helpers'
+import { MockV3Aggregator, MockV3Aggregator__factory } from '../typechain-types'
 import { deployCollateral } from './fixtures'
 import {
   DAI_USD_FEED,
@@ -12,6 +14,7 @@ import {
   DAI,
   USDT_USD_FEED,
   CollateralStatus,
+  USDT,
 } from './helpers'
 
 describe('CvxCurveStableLPCollateral', () => {
@@ -234,6 +237,222 @@ describe('CvxCurveStableLPCollateral', () => {
       // When refreshed, sets status to Unpriced
       await collateral.refresh()
       expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
+    })
+  })
+
+  describe('status', () => {
+    it('maintains status in normal situations', async () => {
+      const collateral = await deployCollateral()
+      // Check initial state
+      expect(await collateral.status()).to.equal(CollateralStatus.SOUND)
+      expect(await collateral.whenDefault()).to.equal(ethers.constants.MaxUint256)
+
+      // Force updates (with no changes)
+      await expect(collateral.refresh()).to.not.emit(collateral, 'CollateralStatusChanged')
+
+      // State remains the same
+      expect(await collateral.status()).to.equal(CollateralStatus.SOUND)
+      expect(await collateral.whenDefault()).to.equal(ethers.constants.MaxUint256)
+    })
+
+    it('recovers from soft-default', async () => {
+      const MockV3AggregatorFactory = <MockV3Aggregator__factory>(
+        await ethers.getContractFactory('MockV3Aggregator')
+      )
+      const daiMockFeed = <MockV3Aggregator>await MockV3AggregatorFactory.deploy(18, exp(1, 18))
+      const collateral = await deployCollateral({
+        tokensPriceFeeds: [[daiMockFeed.address], [USDC_USD_FEED], [USDT_USD_FEED]],
+      })
+
+      // Check initial state
+      expect(await collateral.status()).to.equal(CollateralStatus.SOUND)
+      expect(await collateral.whenDefault()).to.equal(ethers.constants.MaxUint256)
+
+      // Depeg DAI:USD - Reducing price by 20% from 1 to 0.8
+      await daiMockFeed.updateAnswer(exp(8, 17))
+
+      await expect(collateral.refresh())
+        .to.emit(collateral, 'CollateralStatusChanged')
+        .withArgs(CollateralStatus.SOUND, CollateralStatus.IFFY)
+      expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
+
+      // DAI:USD peg recovers back to 1:1
+      await daiMockFeed.updateAnswer(exp(1, 18))
+
+      // Collateral becomes sound again because peg has recovered
+      await expect(collateral.refresh())
+        .to.emit(collateral, 'CollateralStatusChanged')
+        .withArgs(CollateralStatus.IFFY, CollateralStatus.SOUND)
+      expect(await collateral.status()).to.equal(CollateralStatus.SOUND)
+    })
+
+    it('soft-defaults when DAI depegs from fiat target beyond threshold', async () => {
+      const MockV3AggregatorFactory = <MockV3Aggregator__factory>(
+        await ethers.getContractFactory('MockV3Aggregator')
+      )
+      const daiMockFeed = <MockV3Aggregator>await MockV3AggregatorFactory.deploy(18, exp(1, 18))
+      const collateral = await deployCollateral({
+        tokensPriceFeeds: [[daiMockFeed.address], [USDC_USD_FEED], [USDT_USD_FEED]],
+      })
+      const delayUntilDefault = (await collateral.delayUntilDefault()).toBigInt()
+
+      // Check initial state
+      expect(await collateral.status()).to.equal(CollateralStatus.SOUND)
+      expect(await collateral.whenDefault()).to.equal(ethers.constants.MaxUint256)
+
+      // Depeg DAI:USD - Reducing price by 20% from 1 to 0.8
+      await daiMockFeed.updateAnswer(exp(8, 17))
+
+      // Force updates - Should update whenDefault and status
+      let expectedDefaultTimestamp: bigint
+
+      // Set next block timestamp - for deterministic result
+      const nextBlockTimestamp = (await time.latest()) + 1
+      await time.setNextBlockTimestamp(nextBlockTimestamp)
+      expectedDefaultTimestamp = BigInt(nextBlockTimestamp) + delayUntilDefault
+
+      await expect(collateral.refresh())
+        .to.emit(collateral, 'CollateralStatusChanged')
+        .withArgs(CollateralStatus.SOUND, CollateralStatus.IFFY)
+      expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
+      expect(await collateral.whenDefault()).to.equal(expectedDefaultTimestamp)
+
+      // Move time forward past delayUntilDefault
+      await time.increase(delayUntilDefault)
+      expect(await collateral.status()).to.equal(CollateralStatus.DISABLED)
+
+      // Nothing changes if attempt to refresh after default
+      let prevWhenDefault: bigint = (await collateral.whenDefault()).toBigInt()
+      await expect(collateral.refresh()).to.not.emit(collateral, 'CollateralStatusChanged')
+      expect(await collateral.status()).to.equal(CollateralStatus.DISABLED)
+      expect(await collateral.whenDefault()).to.equal(prevWhenDefault)
+    })
+
+    it('soft-defaults when USDC depegs from fiat target beyond threshold', async () => {
+      const MockV3AggregatorFactory = <MockV3Aggregator__factory>(
+        await ethers.getContractFactory('MockV3Aggregator')
+      )
+      const usdcMockFeed = <MockV3Aggregator>await MockV3AggregatorFactory.deploy(6, exp(1, 6))
+      const collateral = await deployCollateral({
+        tokensPriceFeeds: [[USDC_USD_FEED], [usdcMockFeed.address], [USDT_USD_FEED]],
+      })
+      const delayUntilDefault = (await collateral.delayUntilDefault()).toBigInt()
+
+      // Check initial state
+      expect(await collateral.status()).to.equal(CollateralStatus.SOUND)
+      expect(await collateral.whenDefault()).to.equal(ethers.constants.MaxUint256)
+
+      // Depeg DAI:USD - Reducing price by 20% from 1 to 0.8
+      await usdcMockFeed.updateAnswer(exp(8, 5))
+
+      // Force updates - Should update whenDefault and status
+      let expectedDefaultTimestamp: bigint
+
+      // Set next block timestamp - for deterministic result
+      const nextBlockTimestamp = (await time.latest()) + 1
+      await time.setNextBlockTimestamp(nextBlockTimestamp)
+      expectedDefaultTimestamp = BigInt(nextBlockTimestamp) + delayUntilDefault
+
+      await expect(collateral.refresh())
+        .to.emit(collateral, 'CollateralStatusChanged')
+        .withArgs(CollateralStatus.SOUND, CollateralStatus.IFFY)
+      expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
+      expect(await collateral.whenDefault()).to.equal(expectedDefaultTimestamp)
+
+      // Move time forward past delayUntilDefault
+      await time.increase(delayUntilDefault)
+      expect(await collateral.status()).to.equal(CollateralStatus.DISABLED)
+
+      // Nothing changes if attempt to refresh after default
+      let prevWhenDefault: bigint = (await collateral.whenDefault()).toBigInt()
+      await expect(collateral.refresh()).to.not.emit(collateral, 'CollateralStatusChanged')
+      expect(await collateral.status()).to.equal(CollateralStatus.DISABLED)
+      expect(await collateral.whenDefault()).to.equal(prevWhenDefault)
+    })
+
+    it('soft-defaults when USDT depegs from fiat target beyond threshold', async () => {
+      const MockV3AggregatorFactory = <MockV3Aggregator__factory>(
+        await ethers.getContractFactory('MockV3Aggregator')
+      )
+      const usdtMockFeed = <MockV3Aggregator>await MockV3AggregatorFactory.deploy(6, exp(1, 6))
+      const collateral = await deployCollateral({
+        tokensPriceFeeds: [[USDC_USD_FEED], [usdtMockFeed.address], [USDT_USD_FEED]],
+      })
+      const delayUntilDefault = (await collateral.delayUntilDefault()).toBigInt()
+
+      // Check initial state
+      expect(await collateral.status()).to.equal(CollateralStatus.SOUND)
+      expect(await collateral.whenDefault()).to.equal(ethers.constants.MaxUint256)
+
+      // Depeg DAI:USD - Reducing price by 20% from 1 to 0.8
+      await usdtMockFeed.updateAnswer(exp(8, 5))
+
+      // Force updates - Should update whenDefault and status
+      let expectedDefaultTimestamp: bigint
+
+      // Set next block timestamp - for deterministic result
+      const nextBlockTimestamp = (await time.latest()) + 1
+      await time.setNextBlockTimestamp(nextBlockTimestamp)
+      expectedDefaultTimestamp = BigInt(nextBlockTimestamp) + delayUntilDefault
+
+      await expect(collateral.refresh())
+        .to.emit(collateral, 'CollateralStatusChanged')
+        .withArgs(CollateralStatus.SOUND, CollateralStatus.IFFY)
+      expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
+      expect(await collateral.whenDefault()).to.equal(expectedDefaultTimestamp)
+
+      // Move time forward past delayUntilDefault
+      await time.increase(delayUntilDefault)
+      expect(await collateral.status()).to.equal(CollateralStatus.DISABLED)
+
+      // Nothing changes if attempt to refresh after default
+      let prevWhenDefault: bigint = (await collateral.whenDefault()).toBigInt()
+      await expect(collateral.refresh()).to.not.emit(collateral, 'CollateralStatusChanged')
+      expect(await collateral.status()).to.equal(CollateralStatus.DISABLED)
+      expect(await collateral.whenDefault()).to.equal(prevWhenDefault)
+    })
+
+    it('soft-defaults when liquidity pool is unbalanced beyond threshold', async () => {
+      const CurvePoolMockFactory = await ethers.getContractFactory('CurvePoolMock')
+      const poolMock = await CurvePoolMockFactory.deploy(
+        [exp(10_000, 18), exp(10_000, 6), exp(10_000, 18)],
+        [DAI, USDC, USDT]
+      )
+      const collateral = await deployCollateral({
+        curvePool: poolMock.address,
+      })
+      const delayUntilDefault = (await collateral.delayUntilDefault()).toBigInt()
+
+      // Check initial state
+      expect(await collateral.status()).to.equal(CollateralStatus.SOUND)
+      expect(await collateral.whenDefault()).to.equal(ethers.constants.MaxUint256)
+
+      // Depeg DAI:USDC - Set ratio of DAI reserves to USDC reserves 1:0.5
+      await poolMock.setBalances([exp(20_000, 18), exp(10_000, 6), exp(16_000, 6)])
+
+      // Force updates - Should update whenDefault and status
+      let expectedDefaultTimestamp: bigint
+
+      // Set next block timestamp - for deterministic result
+      const nextBlockTimestamp = (await time.latest()) + 1
+      await time.setNextBlockTimestamp(nextBlockTimestamp)
+      expectedDefaultTimestamp = BigInt(nextBlockTimestamp) + delayUntilDefault
+
+      await expect(collateral.refresh())
+        .to.emit(collateral, 'CollateralStatusChanged')
+        .withArgs(CollateralStatus.SOUND, CollateralStatus.IFFY)
+      expect(await collateral.status()).to.equal(CollateralStatus.IFFY)
+      expect(await collateral.whenDefault()).to.equal(expectedDefaultTimestamp)
+
+      // Move time forward past delayUntilDefault
+      await time.increase(delayUntilDefault)
+      expect(await collateral.status()).to.equal(CollateralStatus.DISABLED)
+
+      // Nothing changes if attempt to refresh after default
+      let prevWhenDefault: bigint = (await collateral.whenDefault()).toBigInt()
+      await expect(collateral.refresh()).to.not.emit(collateral, 'CollateralStatusChanged')
+      expect(await collateral.status()).to.equal(CollateralStatus.DISABLED)
+      expect(await collateral.whenDefault()).to.equal(prevWhenDefault)
     })
   })
 })
