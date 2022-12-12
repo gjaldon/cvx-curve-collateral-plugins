@@ -137,6 +137,18 @@ contract PoolTokens {
         return totalBalances;
     }
 
+    function getBalances() public view returns (uint192[] memory) {
+        uint192[] memory balances = new uint192[](tokensLength);
+
+        for (uint8 i = 0; i < tokensLength; i++) {
+            ERC20 token = getToken(i);
+            uint192 balance = shiftl_toFix(curvePool.balances(i), -int8(token.decimals()));
+            balances[i] = (balance);
+        }
+
+        return balances;
+    }
+
     function getToken(uint8 index) public view returns (ERC20) {
         if (index >= tokensLength) revert WrongIndex(tokensLength - 1);
         if (index == 0) return token0;

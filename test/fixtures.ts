@@ -299,6 +299,7 @@ interface CollateralOpts {
   oracleTimeout?: bigint
   fallbackPrice?: bigint
   maxTradeVolume?: bigint
+  poolRatioThreshold?: bigint
   defaultThreshold?: bigint
   delayUntilDefault?: bigint
 }
@@ -313,6 +314,7 @@ const defaultOpts: CvxCurveStableLPCollateral.ConfigurationStruct = {
   oracleTimeout: ORACLE_TIMEOUT,
   fallbackPrice: FIX_ONE,
   maxTradeVolume: MAX_TRADE_VOL,
+  poolRatioThreshold: exp(1, 17),
   defaultThreshold: DEFAULT_THRESHOLD,
   delayUntilDefault: DELAY_UNTIL_DEFAULT,
 }

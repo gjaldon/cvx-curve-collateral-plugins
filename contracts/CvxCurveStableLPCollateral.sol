@@ -25,6 +25,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         uint192 fallbackPrice;
         uint192 maxTradeVolume;
         uint192 defaultThreshold;
+        uint192 poolRatioThreshold;
         uint256 delayUntilDefault;
     }
 
@@ -33,6 +34,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
     uint192 public immutable maxTradeVolume; // {UoA}
     uint192 public immutable fallbackPrice; // {UoA}
     uint192 public immutable defaultThreshold; // {%} e.g. 0.05
+    uint192 public immutable poolRatioThreshold;
     uint192 public prevReferencePrice; // previous rate, {collateral/reference}
     uint256 public immutable delayUntilDefault; // {s} e.g 86400
     uint256 private constant NEVER = type(uint256).max;
@@ -59,6 +61,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         require(config.defaultThreshold > 0, "defaultThreshold zero");
         require(config.targetName != bytes32(0), "targetName missing");
         require(config.delayUntilDefault > 0, "delayUntilDefault zero");
+        require(config.poolRatioThreshold > 0, "poolRatioThreshold zero");
 
         erc20 = config.wrappedStakeToken;
         targetName = config.targetName;
@@ -67,6 +70,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         maxTradeVolume = config.maxTradeVolume;
         fallbackPrice = config.fallbackPrice;
         defaultThreshold = config.defaultThreshold;
+        poolRatioThreshold = config.poolRatioThreshold;
 
         prevReferencePrice = refPerTok();
     }
@@ -82,7 +86,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         if (referencePrice < prevReferencePrice) {
             markStatus(CollateralStatus.DISABLED);
         } else {
-            if (pegNotMaintained()) {
+            if (pegNotMaintained() || unbalancedBeyondTreshold()) {
                 markStatus(CollateralStatus.IFFY);
             } else {
                 markStatus(CollateralStatus.SOUND);
@@ -94,6 +98,21 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
             emit CollateralStatusChanged(oldStatus, newStatus);
         }
         // No interactions beyond the initial refresher
+    }
+
+    function unbalancedBeyondTreshold() internal view returns (bool) {
+        uint192[] memory balances = getBalances();
+        uint192 totalBalances;
+        uint192 min = FIX_MAX;
+        uint192 max;
+
+        for (uint8 i = 0; i < balances.length; i++) {
+            min = _safeWrap(Math.min(min, balances[i]));
+            max = _safeWrap(Math.max(max, balances[i]));
+            totalBalances += balances[i];
+        }
+
+        return (max - min).div(totalBalances) > poolRatioThreshold;
     }
 
     function pegNotMaintained() internal view returns (bool) {
