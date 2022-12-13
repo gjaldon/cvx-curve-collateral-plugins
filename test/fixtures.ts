@@ -290,7 +290,7 @@ interface CollateralOpts {
   lpToken?: string
   poolTokens?: string[]
   tokensPriceFeeds?: string[][]
-  targetPegFeeds?: string[]
+  targetPegFeed?: string
   curvePool?: string
   targetName?: string
   oracleTimeout?: bigint
@@ -306,11 +306,7 @@ const defaultOpts: CollateralOpts = {
   poolTokens: [DAI, USDC, USDT],
   curvePool: THREE_POOL,
   tokensPriceFeeds: [[DAI_USD_FEED], [USDC_USD_FEED], [USDT_USD_FEED]],
-  targetPegFeeds: [
-    ethers.constants.AddressZero,
-    ethers.constants.AddressZero,
-    ethers.constants.AddressZero,
-  ],
+  targetPegFeed: ethers.constants.AddressZero,
   targetName: ethers.utils.formatBytes32String('USD'),
   oracleTimeout: ORACLE_TIMEOUT,
   fallbackPrice: FIX_ONE,

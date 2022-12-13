@@ -22,6 +22,8 @@ import {
   COMP,
   MAX_TRADE_VOL,
   RSR,
+  WETH,
+  ETH_USD_FEED,
 } from './helpers'
 
 describe('CvxCurveStableLPCollateral', () => {
@@ -97,16 +99,19 @@ describe('CvxCurveStableLPCollateral', () => {
         'fallback price zero'
       )
     })
+  })
 
-    it('does not allow targetPegFeeds with length that does not match poolTokens', async () => {
-      await expect(deployCollateral({ targetPegFeeds: [] })).to.be.revertedWith(
-        'targetPegFeeds length must match poolTokens'
-      )
+  describe('getPeg', () => {
+    it('supports non-fiat pegs', async () => {
+      const collateral = await deployCollateral({ targetPegFeed: ETH_USD_FEED })
 
-      const zero = ethers.constants.AddressZero
-      await expect(
-        deployCollateral({ targetPegFeeds: [zero, zero, zero, zero] })
-      ).to.be.revertedWith('targetPegFeeds length must match poolTokens')
+      expect(await collateral.getPeg()).to.eq(1209809600000000000000n)
+    })
+
+    it('supports fiat pegs', async () => {
+      const collateral = await deployCollateral({ targetPegFeed: ethers.constants.AddressZero })
+
+      expect(await collateral.getPeg()).to.eq(FIX_ONE)
     })
   })
 
@@ -550,4 +555,129 @@ describe('CvxCurveStableLPCollateral', () => {
       expect(prevRefPerTok).to.be.lt(newRefPerTok)
     })
   })
+})
+
+describe('CvxCurveStableLPCollateral integration with reserve protocol', () => {
+  beforeEach(resetFork)
+
+  it('sets up assets', async () => {
+    const { compAsset, compToken, rsrAsset, rsr } = await makeReserveProtocol()
+    // COMP Token
+    expect(await compAsset.isCollateral()).to.equal(false)
+    expect(await compAsset.erc20()).to.equal(COMP)
+    expect(compToken.address).to.equal(COMP)
+    expect(await compToken.decimals()).to.equal(18)
+    expect(await compAsset.strictPrice()).to.be.closeTo(exp(51, 18), exp(1, 18)) // Close to $51 USD
+    expect(await compAsset.maxTradeVolume()).to.equal(MAX_TRADE_VOL)
+
+    // RSR Token
+    expect(await rsrAsset.isCollateral()).to.equal(false)
+    expect(await rsrAsset.erc20()).to.equal(ethers.utils.getAddress(RSR))
+    expect(rsr.address).to.equal(RSR)
+    expect(await rsr.decimals()).to.equal(18)
+    expect(await rsrAsset.strictPrice()).to.be.closeTo(exp(645, 13), exp(1, 13)) // Close to $0.00645
+    expect(await rsrAsset.maxTradeVolume()).to.equal(MAX_TRADE_VOL)
+  })
+
+  it('sets up collateral', async () => {
+    const { collateral } = await makeReserveProtocol()
+    expect(await collateral.isCollateral()).to.equal(true)
+    expect(await collateral.erc20()).to.not.equal(ethers.constants.AddressZero) // This address is dynamic and should be the deployed CvxStakingWrapper contract
+    expect(await collateral.targetName()).to.equal(ethers.utils.formatBytes32String('USD'))
+    expect(await collateral.targetPerRef()).to.eq(FIX_ONE)
+    expect(await collateral.strictPrice()).to.eq(1022160092729999097n)
+    expect(await collateral.maxTradeVolume()).to.eq(MAX_TRADE_VOL)
+  })
+
+  it('registers ERC20s and Assets/Collateral', async () => {
+    const { collateral, assetRegistry, rTokenAsset, rsrAsset, compAsset } =
+      await makeReserveProtocol()
+    // Check assets/collateral
+    const ERC20s = await assetRegistry.erc20s()
+
+    expect(ERC20s[0]).to.equal(await rTokenAsset.erc20())
+    expect(ERC20s[1]).to.equal(await rsrAsset.erc20())
+    expect(ERC20s[2]).to.equal(await compAsset.erc20())
+    expect(ERC20s[3]).to.equal(await collateral.erc20())
+
+    // Assets
+    expect(await assetRegistry.toAsset(ERC20s[0])).to.equal(rTokenAsset.address)
+    expect(await assetRegistry.toAsset(ERC20s[1])).to.equal(rsrAsset.address)
+    expect(await assetRegistry.toAsset(ERC20s[2])).to.equal(compAsset.address)
+    expect(await assetRegistry.toAsset(ERC20s[3])).to.equal(collateral.address)
+    // Collaterals
+    expect(await assetRegistry.toColl(ERC20s[3])).to.equal(collateral.address)
+  })
+
+  // it('registers simple basket', async () => {
+  //   const { rToken, rTokenAsset, basketHandler, facade, facadeTest } = await makeReserveProtocol()
+  //   const [bob] = await ethers.getSigners()
+
+  //   // Basket
+  //   expect(await basketHandler.fullyCollateralized()).to.equal(true)
+  //   const backing = await facade.basketTokens(rToken.address)
+  //   expect(backing[0]).to.equal(ethers.utils.getAddress(DAI_USDC_PAIR))
+  //   expect(backing.length).to.equal(1)
+
+  //   // Check other values
+  //   expect(await basketHandler.nonce()).to.be.gt(0n)
+  //   expect(await basketHandler.timestamp()).to.be.gt(0n)
+  //   expect(await basketHandler.status()).to.equal(CollateralStatus.SOUND)
+  //   expect(await facadeTest.callStatic.totalAssetValue(rToken.address)).to.equal(0)
+  //   const [isFallback, price] = await basketHandler.price(true)
+  //   expect(isFallback).to.equal(false)
+  //   // $1.99 is price of target unit
+  //   expect(price).to.eq(1999729779296468928n)
+  //   expect(await rTokenAsset.strictPrice()).eq(price)
+  // })
+
+  // it('issues/reedems with simple basket', async function () {
+  //   const { rToken, collateral, facadeTest, backingManager, basketHandler } =
+  //     await makeReserveProtocol()
+  //   const [bob] = await ethers.getSigners()
+
+  //   const daiUsdcLp = await ethers.getContractAt('UniswapV2Pair', DAI_USDC_PAIR)
+
+  //   await whileImpersonating(DAI_USDC_HOLDER, async (signer) => {
+  //     const balance = await daiUsdcLp.balanceOf(signer.address)
+  //     await daiUsdcLp.connect(signer).transfer(bob.address, balance)
+  //   })
+  //   await daiUsdcLp.approve(rToken.address, ethers.constants.MaxUint256)
+
+  //   const lpTokenTransferred = (await basketHandler.quantity(daiUsdcLp.address)).toBigInt() * 2n // Issued 2 units of RToken
+  //   const oldLpBalance = (await daiUsdcLp.balanceOf(bob.address)).toBigInt()
+
+  //   // Check rToken is issued
+  //   const issueAmount = exp(2, 18)
+  //   await expect(await rToken.issue(issueAmount)).to.changeTokenBalance(rToken, bob, issueAmount)
+  //   // Check LP tokens transferred for RToken issuance
+  //   expect(await daiUsdcLp.balanceOf(bob.address)).to.eq(oldLpBalance - lpTokenTransferred)
+
+  //   // Check asset value
+  //   // Approx $3.99 in value. The backing manager only has collateral tokens.
+  //   const expectedValue = (await collateral.bal(backingManager.address))
+  //     .mul(await collateral.strictPrice())
+  //     .div(FIX_ONE)
+  //   expect(await facadeTest.callStatic.totalAssetValue(rToken.address)).to.be.closeTo(
+  //     expectedValue,
+  //     1
+  //   )
+
+  //   // Redeem Rtokens
+  //   // We are within the limits of redemption battery (500 RTokens)
+  //   await expect(rToken.connect(bob).redeem(issueAmount)).changeTokenBalance(
+  //     rToken,
+  //     bob,
+  //     `-${issueAmount}`
+  //   )
+
+  //   // Check balances after - Backing Manager is empty
+  //   expect(await daiUsdcLp.balanceOf(backingManager.address)).to.eq(0)
+
+  //   // Check funds returned to user
+  //   expect(await daiUsdcLp.balanceOf(bob.address)).to.eq(oldLpBalance)
+
+  //   // Check asset value left
+  //   expect(await facadeTest.callStatic.totalAssetValue(rToken.address)).to.eq(0)
+  // })
 })
