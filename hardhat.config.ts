@@ -14,9 +14,10 @@ const { MAINNET_RPC_URL, MNEMONIC, GOERLI_RPC_URL } = process.env
 const config: HardhatUserConfig = {
   networks: {
     hardhat: {
+      allowUnlimitedContractSize: true,
       forking: {
         url: MAINNET_RPC_URL || '',
-        blockNumber: 15850930,
+        blockNumber: 16074053,
       },
     },
     mainnet: {

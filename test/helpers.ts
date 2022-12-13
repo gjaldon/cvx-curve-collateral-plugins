@@ -35,6 +35,23 @@ export const exp = (i: Numeric, d: Numeric = 0): bigint => {
   return BigInt(i) * 10n ** BigInt(d)
 }
 
+export const resetFork = async () => {
+  // Need to reset state since running the whole test suites to all
+  // test cases in this file to fail. Strangely, all test cases
+  // pass when running just this file alone.
+  await hre.network.provider.request({
+    method: 'hardhat_reset',
+    params: [
+      {
+        forking: {
+          jsonRpcUrl: process.env.MAINNET_RPC_URL,
+          blockNumber: 16074053,
+        },
+      },
+    ],
+  })
+}
+
 type ImpersonationFunction<T> = (signer: SignerWithAddress) => Promise<T>
 
 /* whileImpersonating(address, f):

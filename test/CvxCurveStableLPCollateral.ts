@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import { ethers } from 'hardhat'
 import { time } from '@nomicfoundation/hardhat-network-helpers'
 import { MockV3Aggregator, MockV3Aggregator__factory } from '../typechain-types'
-import { deployCollateral } from './fixtures'
+import { deployCollateral, makeReserveProtocol } from './fixtures'
 import {
   DAI_USD_FEED,
   THREE_POOL,
@@ -18,6 +18,10 @@ import {
   THREE_POOL_HOLDER,
   THREE_POOL_TOKEN,
   FIX_ONE,
+  resetFork,
+  COMP,
+  MAX_TRADE_VOL,
+  RSR,
 } from './helpers'
 
 describe('CvxCurveStableLPCollateral', () => {
@@ -93,13 +97,24 @@ describe('CvxCurveStableLPCollateral', () => {
         'fallback price zero'
       )
     })
+
+    it('does not allow targetPegFeeds with length that does not match poolTokens', async () => {
+      await expect(deployCollateral({ targetPegFeeds: [] })).to.be.revertedWith(
+        'targetPegFeeds length must match poolTokens'
+      )
+
+      const zero = ethers.constants.AddressZero
+      await expect(
+        deployCollateral({ targetPegFeeds: [zero, zero, zero, zero] })
+      ).to.be.revertedWith('targetPegFeeds length must match poolTokens')
+    })
   })
 
   describe('prices', () => {
     it('returns price per lp token', async () => {
       const collateral = await deployCollateral()
 
-      expect(await collateral.strictPrice()).to.eq(1022160092729999097n)
+      expect(await collateral.strictPrice()).to.eq(1022619554689953605n)
     })
 
     it('price changes as USDC and USDT prices change in Curve 3Pool', async () => {
@@ -127,7 +142,10 @@ describe('CvxCurveStableLPCollateral', () => {
       const [swapper] = await ethers.getSigners()
       let prevPrice = await collateral.strictPrice()
 
-      const dai = await ethers.getContractAt('ERC20', DAI)
+      const dai = await ethers.getContractAt(
+        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
+        DAI
+      )
       const threePool = await ethers.getContractAt('ICurvePool', THREE_POOL)
       await dai.approve(threePool.address, ethers.constants.MaxUint256)
 
@@ -141,10 +159,13 @@ describe('CvxCurveStableLPCollateral', () => {
       ).to.changeTokenBalance(dai, swapper.address, `-${exp(100_000, 18)}`)
 
       let newPrice = await collateral.strictPrice()
-      expect(prevPrice).to.be.lt(newPrice)
+      expect(prevPrice).to.not.eq(newPrice)
       prevPrice = newPrice
 
-      const usdc = await ethers.getContractAt('ERC20', USDC)
+      const usdc = await ethers.getContractAt(
+        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
+        USDC
+      )
       await usdc.approve(threePool.address, ethers.constants.MaxUint256)
       await expect(threePool.exchange(1, 2, exp(90_000, 6), exp(89_000, 6))).to.changeTokenBalance(
         usdc,
@@ -467,7 +488,10 @@ describe('CvxCurveStableLPCollateral', () => {
       const [swapper] = await ethers.getSigners()
       const threePool = await ethers.getContractAt('StableSwap3Pool', THREE_POOL)
 
-      const dai = await ethers.getContractAt('ERC20', DAI)
+      const dai = await ethers.getContractAt(
+        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
+        DAI
+      )
       await dai.approve(threePool.address, ethers.constants.MaxUint256)
       await whileImpersonating(DAI_HOLDER, async (signer) => {
         const balance = await dai.balanceOf(signer.address)
@@ -483,7 +507,10 @@ describe('CvxCurveStableLPCollateral', () => {
       prevRefPerTok = newRefPerTok
 
       // Remove 30% of Liquidity. THREE_POOL_HOLDER ~30% of the supply of WBTC-ETH LP token
-      const lpToken = await ethers.getContractAt('ERC20', THREE_POOL_TOKEN)
+      const lpToken = await ethers.getContractAt(
+        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
+        THREE_POOL_TOKEN
+      )
       await whileImpersonating(THREE_POOL_HOLDER, async (signer) => {
         const balance = await lpToken.balanceOf(signer.address)
         await lpToken.connect(signer).transfer(swapper.address, balance)
@@ -500,8 +527,14 @@ describe('CvxCurveStableLPCollateral', () => {
       expect(prevRefPerTok).to.be.lt(newRefPerTok)
       prevRefPerTok = newRefPerTok
 
-      const usdc = await ethers.getContractAt('ERC20', USDC)
-      const usdt = await ethers.getContractAt('ERC20', USDT)
+      const usdc = await ethers.getContractAt(
+        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
+        USDC
+      )
+      const usdt = await ethers.getContractAt(
+        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
+        USDT
+      )
 
       const daiBal = await dai.balanceOf(swapper.address)
       const usdcBal = await usdc.balanceOf(swapper.address)

@@ -254,7 +254,7 @@ export const makeReserveProtocol = async () => {
     await ethers.getContractAt('RTokenAsset', await assetRegistry.toAsset(rToken.address))
   )
 
-  const { collateral, chainlinkFeed, cusdcV3, wcusdcV3, usdc } = await makeCollateral()()
+  const collateral = await deployCollateral()
 
   // Register an Asset and a Collateral
   await assetRegistry.connect(owner).register(compAsset.address)
@@ -269,12 +269,9 @@ export const makeReserveProtocol = async () => {
   await backingManager.grantRTokenAllowance(collateralERC20)
 
   return {
-    wcusdcV3,
-    usdc,
     assetRegistry,
     basketHandler,
     collateral,
-    chainlinkFeed,
     rTokenAsset,
     facade,
     rToken,
@@ -283,7 +280,6 @@ export const makeReserveProtocol = async () => {
     rsr,
     compToken,
     facadeTest,
-    cusdcV3,
     backingManager,
     main,
   }
@@ -294,6 +290,7 @@ interface CollateralOpts {
   lpToken?: string
   poolTokens?: string[]
   tokensPriceFeeds?: string[][]
+  targetPegFeeds?: string[]
   curvePool?: string
   targetName?: string
   oracleTimeout?: bigint
@@ -304,17 +301,21 @@ interface CollateralOpts {
   delayUntilDefault?: bigint
 }
 
-const defaultOpts: CvxCurveStableLPCollateral.ConfigurationStruct = {
-  wrappedStakeToken: '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490',
+const defaultOpts: CollateralOpts = {
   lpToken: THREE_POOL_TOKEN,
   poolTokens: [DAI, USDC, USDT],
   curvePool: THREE_POOL,
   tokensPriceFeeds: [[DAI_USD_FEED], [USDC_USD_FEED], [USDT_USD_FEED]],
+  targetPegFeeds: [
+    ethers.constants.AddressZero,
+    ethers.constants.AddressZero,
+    ethers.constants.AddressZero,
+  ],
   targetName: ethers.utils.formatBytes32String('USD'),
   oracleTimeout: ORACLE_TIMEOUT,
   fallbackPrice: FIX_ONE,
   maxTradeVolume: MAX_TRADE_VOL,
-  poolRatioThreshold: exp(1, 17),
+  poolRatioThreshold: exp(3, 17), // 30%
   defaultThreshold: DEFAULT_THRESHOLD,
   delayUntilDefault: DELAY_UNTIL_DEFAULT,
 }
@@ -322,11 +323,32 @@ const defaultOpts: CvxCurveStableLPCollateral.ConfigurationStruct = {
 export const deployCollateral = async (
   opts: CollateralOpts = {}
 ): Promise<CvxCurveStableLPCollateral> => {
-  const newOpts = { ...defaultOpts, ...opts }
+  opts = { ...defaultOpts, ...opts }
 
   const CvxCurveStableLPCollateralFactory = <CvxCurveStableLPCollateral__factory>(
     await ethers.getContractFactory('CvxCurveStableLPCollateral')
   )
+
+  let newOpts: CvxCurveStableLPCollateral.ConfigurationStruct
+
+  if (opts.wrappedStakeToken == undefined) {
+    const CvxMiningFactory = await ethers.getContractFactory('CvxMining')
+    const cvxMining = await CvxMiningFactory.deploy()
+
+    const ConvexStakingWrapperFactory = await ethers.getContractFactory('ConvexStakingWrapper', {
+      libraries: {
+        CvxMining: cvxMining.address,
+      },
+    })
+    const convexStakingWrapper = await ConvexStakingWrapperFactory.deploy({ gasLimit: 30000000 })
+    newOpts = <CvxCurveStableLPCollateral.ConfigurationStruct>{
+      ...opts,
+      wrappedStakeToken: convexStakingWrapper.address,
+    }
+  } else {
+    newOpts = <CvxCurveStableLPCollateral.ConfigurationStruct>opts
+  }
+
   const collateral = <CvxCurveStableLPCollateral>(
     await CvxCurveStableLPCollateralFactory.deploy(newOpts)
   )
