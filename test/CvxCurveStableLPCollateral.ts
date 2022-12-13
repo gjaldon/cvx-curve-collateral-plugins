@@ -24,7 +24,13 @@ import {
   RSR,
   WETH,
   ETH_USD_FEED,
+  CVX_3CRV_HOLDER,
+  CVX_3CRV,
+  CVX,
+  CRV,
 } from './helpers'
+
+const ERC20 = '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20'
 
 describe('CvxCurveStableLPCollateral', () => {
   describe('constructor validation', () => {
@@ -147,10 +153,7 @@ describe('CvxCurveStableLPCollateral', () => {
       const [swapper] = await ethers.getSigners()
       let prevPrice = await collateral.strictPrice()
 
-      const dai = await ethers.getContractAt(
-        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
-        DAI
-      )
+      const dai = await ethers.getContractAt(ERC20, DAI)
       const threePool = await ethers.getContractAt('ICurvePool', THREE_POOL)
       await dai.approve(threePool.address, ethers.constants.MaxUint256)
 
@@ -167,10 +170,7 @@ describe('CvxCurveStableLPCollateral', () => {
       expect(prevPrice).to.not.eq(newPrice)
       prevPrice = newPrice
 
-      const usdc = await ethers.getContractAt(
-        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
-        USDC
-      )
+      const usdc = await ethers.getContractAt(ERC20, USDC)
       await usdc.approve(threePool.address, ethers.constants.MaxUint256)
       await expect(threePool.exchange(1, 2, exp(90_000, 6), exp(89_000, 6))).to.changeTokenBalance(
         usdc,
@@ -493,10 +493,7 @@ describe('CvxCurveStableLPCollateral', () => {
       const [swapper] = await ethers.getSigners()
       const threePool = await ethers.getContractAt('StableSwap3Pool', THREE_POOL)
 
-      const dai = await ethers.getContractAt(
-        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
-        DAI
-      )
+      const dai = await ethers.getContractAt(ERC20, DAI)
       await dai.approve(threePool.address, ethers.constants.MaxUint256)
       await whileImpersonating(DAI_HOLDER, async (signer) => {
         const balance = await dai.balanceOf(signer.address)
@@ -512,10 +509,7 @@ describe('CvxCurveStableLPCollateral', () => {
       prevRefPerTok = newRefPerTok
 
       // Remove 30% of Liquidity. THREE_POOL_HOLDER ~30% of the supply of WBTC-ETH LP token
-      const lpToken = await ethers.getContractAt(
-        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
-        THREE_POOL_TOKEN
-      )
+      const lpToken = await ethers.getContractAt(ERC20, THREE_POOL_TOKEN)
       await whileImpersonating(THREE_POOL_HOLDER, async (signer) => {
         const balance = await lpToken.balanceOf(signer.address)
         await lpToken.connect(signer).transfer(swapper.address, balance)
@@ -532,14 +526,8 @@ describe('CvxCurveStableLPCollateral', () => {
       expect(prevRefPerTok).to.be.lt(newRefPerTok)
       prevRefPerTok = newRefPerTok
 
-      const usdc = await ethers.getContractAt(
-        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
-        USDC
-      )
-      const usdt = await ethers.getContractAt(
-        '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20',
-        USDT
-      )
+      const usdc = await ethers.getContractAt(ERC20, USDC)
+      const usdt = await ethers.getContractAt(ERC20, USDT)
 
       const daiBal = await dai.balanceOf(swapper.address)
       const usdcBal = await usdc.balanceOf(swapper.address)
@@ -567,7 +555,7 @@ describe('CvxCurveStableLPCollateral integration with reserve protocol', () => {
     expect(await compAsset.erc20()).to.equal(COMP)
     expect(compToken.address).to.equal(COMP)
     expect(await compToken.decimals()).to.equal(18)
-    expect(await compAsset.strictPrice()).to.be.closeTo(exp(51, 18), exp(1, 18)) // Close to $51 USD
+    expect(await compAsset.strictPrice()).to.be.closeTo(exp(38, 18), exp(1, 18)) // Close to $38 USD
     expect(await compAsset.maxTradeVolume()).to.equal(MAX_TRADE_VOL)
 
     // RSR Token
@@ -575,7 +563,7 @@ describe('CvxCurveStableLPCollateral integration with reserve protocol', () => {
     expect(await rsrAsset.erc20()).to.equal(ethers.utils.getAddress(RSR))
     expect(rsr.address).to.equal(RSR)
     expect(await rsr.decimals()).to.equal(18)
-    expect(await rsrAsset.strictPrice()).to.be.closeTo(exp(645, 13), exp(1, 13)) // Close to $0.00645
+    expect(await rsrAsset.strictPrice()).to.be.closeTo(exp(418, 13), exp(1, 13)) // Close to $0.00418
     expect(await rsrAsset.maxTradeVolume()).to.equal(MAX_TRADE_VOL)
   })
 
@@ -585,7 +573,7 @@ describe('CvxCurveStableLPCollateral integration with reserve protocol', () => {
     expect(await collateral.erc20()).to.not.equal(ethers.constants.AddressZero) // This address is dynamic and should be the deployed CvxStakingWrapper contract
     expect(await collateral.targetName()).to.equal(ethers.utils.formatBytes32String('USD'))
     expect(await collateral.targetPerRef()).to.eq(FIX_ONE)
-    expect(await collateral.strictPrice()).to.eq(1022160092729999097n)
+    expect(await collateral.strictPrice()).to.eq(1022619554689953605n)
     expect(await collateral.maxTradeVolume()).to.eq(MAX_TRADE_VOL)
   })
 
@@ -609,75 +597,130 @@ describe('CvxCurveStableLPCollateral integration with reserve protocol', () => {
     expect(await assetRegistry.toColl(ERC20s[3])).to.equal(collateral.address)
   })
 
-  // it('registers simple basket', async () => {
-  //   const { rToken, rTokenAsset, basketHandler, facade, facadeTest } = await makeReserveProtocol()
-  //   const [bob] = await ethers.getSigners()
+  it('registers simple basket', async () => {
+    const { rToken, rTokenAsset, basketHandler, facade, facadeTest, collateral } =
+      await makeReserveProtocol()
+    // Basket
+    expect(await basketHandler.fullyCollateralized()).to.equal(true)
+    const backing = await facade.basketTokens(rToken.address)
+    expect(backing[0]).to.equal(ethers.utils.getAddress(await collateral.erc20()))
+    expect(backing.length).to.equal(1)
 
-  //   // Basket
-  //   expect(await basketHandler.fullyCollateralized()).to.equal(true)
-  //   const backing = await facade.basketTokens(rToken.address)
-  //   expect(backing[0]).to.equal(ethers.utils.getAddress(DAI_USDC_PAIR))
-  //   expect(backing.length).to.equal(1)
+    // Check other values
+    expect(await basketHandler.nonce()).to.be.gt(0n)
+    expect(await basketHandler.timestamp()).to.be.gt(0n)
+    expect(await basketHandler.status()).to.equal(CollateralStatus.SOUND)
+    expect(await facadeTest.callStatic.totalAssetValue(rToken.address)).to.equal(0)
+    const [isFallback, price] = await basketHandler.price(true)
+    expect(isFallback).to.equal(false)
+    expect(price).to.eq(999762969975941599n)
+    expect(await rTokenAsset.strictPrice()).eq(price)
+  })
 
-  //   // Check other values
-  //   expect(await basketHandler.nonce()).to.be.gt(0n)
-  //   expect(await basketHandler.timestamp()).to.be.gt(0n)
-  //   expect(await basketHandler.status()).to.equal(CollateralStatus.SOUND)
-  //   expect(await facadeTest.callStatic.totalAssetValue(rToken.address)).to.equal(0)
-  //   const [isFallback, price] = await basketHandler.price(true)
-  //   expect(isFallback).to.equal(false)
-  //   // $1.99 is price of target unit
-  //   expect(price).to.eq(1999729779296468928n)
-  //   expect(await rTokenAsset.strictPrice()).eq(price)
-  // })
+  it('issues and reedems with simple basket', async () => {
+    const { rToken, collateral, facadeTest, backingManager, basketHandler } =
+      await makeReserveProtocol()
+    const [bob] = await ethers.getSigners()
 
-  // it('issues/reedems with simple basket', async function () {
-  //   const { rToken, collateral, facadeTest, backingManager, basketHandler } =
-  //     await makeReserveProtocol()
-  //   const [bob] = await ethers.getSigners()
+    const cvxWrapper = await ethers.getContractAt('ConvexStakingWrapper', await collateral.erc20())
+    const cvx3crv = await ethers.getContractAt(ERC20, CVX_3CRV)
 
-  //   const daiUsdcLp = await ethers.getContractAt('UniswapV2Pair', DAI_USDC_PAIR)
+    await whileImpersonating(CVX_3CRV_HOLDER, async (signer) => {
+      const balance = await cvx3crv.balanceOf(signer.address)
+      await cvx3crv.connect(signer).transfer(bob.address, balance)
+    })
+    await cvx3crv.approve(cvxWrapper.address, ethers.constants.MaxUint256)
+    const amount = await cvx3crv.balanceOf(bob.address)
+    await cvxWrapper.stake(amount, bob.address)
 
-  //   await whileImpersonating(DAI_USDC_HOLDER, async (signer) => {
-  //     const balance = await daiUsdcLp.balanceOf(signer.address)
-  //     await daiUsdcLp.connect(signer).transfer(bob.address, balance)
-  //   })
-  //   await daiUsdcLp.approve(rToken.address, ethers.constants.MaxUint256)
+    await cvxWrapper.approve(rToken.address, ethers.constants.MaxUint256)
 
-  //   const lpTokenTransferred = (await basketHandler.quantity(daiUsdcLp.address)).toBigInt() * 2n // Issued 2 units of RToken
-  //   const oldLpBalance = (await daiUsdcLp.balanceOf(bob.address)).toBigInt()
+    const cvxWrapperTransferred = (await basketHandler.quantity(cvxWrapper.address)).toBigInt() * 2n // Issued 2 units of RToken
+    const oldWrapperBalance = (await cvxWrapper.balanceOf(bob.address)).toBigInt()
 
-  //   // Check rToken is issued
-  //   const issueAmount = exp(2, 18)
-  //   await expect(await rToken.issue(issueAmount)).to.changeTokenBalance(rToken, bob, issueAmount)
-  //   // Check LP tokens transferred for RToken issuance
-  //   expect(await daiUsdcLp.balanceOf(bob.address)).to.eq(oldLpBalance - lpTokenTransferred)
+    // Check rToken is issued
+    const issueAmount = exp(2, 18)
+    await expect(await rToken.issue(issueAmount)).to.changeTokenBalance(rToken, bob, issueAmount)
+    // Check LP tokens transferred for RToken issuance
+    expect(await cvxWrapper.balanceOf(bob.address)).to.eq(oldWrapperBalance - cvxWrapperTransferred)
 
-  //   // Check asset value
-  //   // Approx $3.99 in value. The backing manager only has collateral tokens.
-  //   const expectedValue = (await collateral.bal(backingManager.address))
-  //     .mul(await collateral.strictPrice())
-  //     .div(FIX_ONE)
-  //   expect(await facadeTest.callStatic.totalAssetValue(rToken.address)).to.be.closeTo(
-  //     expectedValue,
-  //     1
-  //   )
+    // Check asset value
+    // Approx $3.99 in value. The backing manager only has collateral tokens.
+    const expectedValue = (await collateral.bal(backingManager.address))
+      .mul(await collateral.strictPrice())
+      .div(FIX_ONE)
+    expect(await facadeTest.callStatic.totalAssetValue(rToken.address)).to.be.closeTo(
+      expectedValue,
+      1
+    )
 
-  //   // Redeem Rtokens
-  //   // We are within the limits of redemption battery (500 RTokens)
-  //   await expect(rToken.connect(bob).redeem(issueAmount)).changeTokenBalance(
-  //     rToken,
-  //     bob,
-  //     `-${issueAmount}`
-  //   )
+    // Redeem Rtokens
+    // We are within the limits of redemption battery (500 RTokens)
+    await expect(rToken.connect(bob).redeem(issueAmount)).changeTokenBalance(
+      rToken,
+      bob,
+      `-${issueAmount}`
+    )
 
-  //   // Check balances after - Backing Manager is empty
-  //   expect(await daiUsdcLp.balanceOf(backingManager.address)).to.eq(0)
+    // Check balances after - Backing Manager is empty
+    expect(await cvxWrapper.balanceOf(backingManager.address)).to.eq(0)
 
-  //   // Check funds returned to user
-  //   expect(await daiUsdcLp.balanceOf(bob.address)).to.eq(oldLpBalance)
+    // Check funds returned to user
+    expect(await cvxWrapper.balanceOf(bob.address)).to.eq(oldWrapperBalance)
 
-  //   // Check asset value left
-  //   expect(await facadeTest.callStatic.totalAssetValue(rToken.address)).to.eq(0)
-  // })
+    // Check asset value left
+    expect(await facadeTest.callStatic.totalAssetValue(rToken.address)).to.eq(0)
+  })
+
+  it('claims rewards ', async () => {
+    const { rToken, backingManager, collateral } = await makeReserveProtocol()
+    const [bob] = await ethers.getSigners()
+
+    const cvx = await ethers.getContractAt(ERC20, CVX)
+    const crv = await ethers.getContractAt(ERC20, CRV)
+
+    // No rewards so far
+    expect(await crv.balanceOf(backingManager.address)).to.equal(0)
+    expect(await cvx.balanceOf(backingManager.address)).to.equal(0)
+
+    const cvxWrapper = await ethers.getContractAt('ConvexStakingWrapper', await collateral.erc20())
+    const cvx3crv = await ethers.getContractAt(ERC20, CVX_3CRV)
+    await whileImpersonating(CVX_3CRV_HOLDER, async (signer) => {
+      const balance = await cvx3crv.balanceOf(signer.address)
+      await cvx3crv.connect(signer).transfer(bob.address, balance)
+    })
+    await cvx3crv.approve(cvxWrapper.address, ethers.constants.MaxUint256)
+    const amount = await cvx3crv.balanceOf(bob.address)
+    await cvxWrapper.stake(amount, bob.address)
+
+    // Issue RTokens
+    await cvxWrapper.approve(rToken.address, ethers.constants.MaxUint256)
+    const issueAmount = exp(1_000, 18)
+    await expect(rToken.issue(issueAmount)).to.emit(rToken, 'Issuance')
+    expect(await cvxWrapper.balanceOf(backingManager.address)).to.be.gt(0)
+
+    // Check RTokens issued to user
+    expect(await rToken.balanceOf(bob.address)).to.equal(issueAmount)
+
+    // Now we can claim rewards
+    await time.increase(1000)
+    // Claim rewards
+    await expect(await backingManager.claimRewards()).to.emit(backingManager, 'RewardsClaimed')
+
+    // Check rewards in CVX and CRV
+    const cvxRewards = await cvx.balanceOf(backingManager.address)
+    expect(cvxRewards).to.be.gt(0)
+    const crvRewards = await crv.balanceOf(backingManager.address)
+    expect(crvRewards).to.be.gt(0)
+
+    await time.increase(86400)
+    // Get additional rewards
+    await expect(backingManager.claimRewards()).to.emit(backingManager, 'RewardsClaimed')
+
+    const newCvxRewards = await cvx.balanceOf(backingManager.address)
+    expect(newCvxRewards).to.be.gt(cvxRewards)
+
+    const newCrvRewards = await crv.balanceOf(backingManager.address)
+    expect(newCrvRewards).to.be.gt(crvRewards)
+  })
 })

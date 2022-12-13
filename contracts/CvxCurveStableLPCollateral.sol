@@ -8,6 +8,14 @@ import "reserve/contracts/libraries/Fixed.sol";
 import "reserve/contracts/interfaces/IAsset.sol";
 import "./PoolTokens.sol";
 
+interface IWrappedStakedCvx {
+    function crv() external returns (address);
+
+    function cvx() external returns (address);
+
+    function getReward(address _account) external;
+}
+
 /**
  * @title CvxCurveStableLPCollateral
  */
@@ -20,7 +28,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         address[] poolTokens;
         address[][] tokensPriceFeeds;
         address targetPegFeed;
-        ERC20 wrappedStakeToken;
+        address wrappedStakeToken;
         ICurvePool curvePool;
         bytes32 targetName;
         uint48 oracleTimeout;
@@ -32,6 +40,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
     }
 
     IERC20Metadata public immutable erc20;
+    IWrappedStakedCvx public immutable wrappedStakeToken;
     uint8 public immutable erc20Decimals;
     uint192 public immutable maxTradeVolume; // {UoA}
     uint192 public immutable fallbackPrice; // {UoA}
@@ -55,10 +64,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
             config.oracleTimeout
         )
     {
-        require(
-            address(config.wrappedStakeToken) != address(0),
-            "wrappedStakeToken address is zero"
-        );
+        require(config.wrappedStakeToken != address(0), "wrappedStakeToken address is zero");
         require(config.fallbackPrice > 0, "fallback price zero");
         require(config.maxTradeVolume > 0, "invalid max trade volume");
         require(config.defaultThreshold > 0, "defaultThreshold zero");
@@ -66,7 +72,8 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         require(config.delayUntilDefault > 0, "delayUntilDefault zero");
         require(config.poolRatioThreshold > 0, "poolRatioThreshold zero");
 
-        erc20 = config.wrappedStakeToken;
+        erc20 = ERC20(config.wrappedStakeToken);
+        wrappedStakeToken = IWrappedStakedCvx(config.wrappedStakeToken);
         targetName = config.targetName;
         delayUntilDefault = config.delayUntilDefault;
         erc20Decimals = erc20.decimals();
@@ -187,7 +194,15 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         return shiftl_toFix(erc20.balanceOf(account), -int8(erc20Decimals));
     }
 
-    function claimRewards() external {}
+    function claimRewards() external {
+        IERC20 cvx = IERC20(wrappedStakeToken.cvx());
+        IERC20 crv = IERC20(wrappedStakeToken.crv());
+        uint256 cvxOldBal = cvx.balanceOf(address(this));
+        uint256 crvOldBal = crv.balanceOf(address(this));
+        wrappedStakeToken.getReward(address(this));
+        emit RewardsClaimed(cvx, cvx.balanceOf(address(this)) - cvxOldBal);
+        emit RewardsClaimed(crv, crv.balanceOf(address(this)) - crvOldBal);
+    }
 
     /// @return If the asset is an instance of ICollateral or not
     function isCollateral() external pure returns (bool) {

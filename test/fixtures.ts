@@ -317,7 +317,8 @@ const defaultOpts: CollateralOpts = {
 }
 
 export const deployCollateral = async (
-  opts: CollateralOpts = {}
+  opts: CollateralOpts = {},
+  poolId: bigint = 9n
 ): Promise<CvxCurveStableLPCollateral> => {
   opts = { ...defaultOpts, ...opts }
 
@@ -336,7 +337,8 @@ export const deployCollateral = async (
         CvxMining: cvxMining.address,
       },
     })
-    const convexStakingWrapper = await ConvexStakingWrapperFactory.deploy({ gasLimit: 30000000 })
+    const convexStakingWrapper = await ConvexStakingWrapperFactory.deploy()
+    await convexStakingWrapper.initialize(poolId)
     newOpts = <CvxCurveStableLPCollateral.ConfigurationStruct>{
       ...opts,
       wrappedStakeToken: convexStakingWrapper.address,
