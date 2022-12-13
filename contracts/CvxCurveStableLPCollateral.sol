@@ -12,12 +12,14 @@ import "./PoolTokens.sol";
  * @title CvxCurveStableLPCollateral
  */
 contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
+    using OracleLib for AggregatorV3Interface;
     using FixLib for uint192;
 
     struct Configuration {
         ERC20 lpToken;
         address[] poolTokens;
         address[][] tokensPriceFeeds;
+        address[] targetPegFeeds;
         ERC20 wrappedStakeToken;
         ICurvePool curvePool;
         bytes32 targetName;
@@ -48,6 +50,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
             config.lpToken,
             config.poolTokens,
             config.tokensPriceFeeds,
+            config.targetPegFeeds,
             config.curvePool,
             config.oracleTimeout
         )
@@ -119,7 +122,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         for (uint8 i = 0; i < tokensLength; i++) {
             try this.tokenPrice(i) returns (uint192 p) {
                 // Check for soft default of underlying reference token
-                uint192 peg = targetPerRef();
+                uint192 peg = getPeg(i);
                 // D18{UoA/ref}= D18{UoA/ref} * D18{1} / D18
                 uint192 delta = (peg * defaultThreshold) / FIX_ONE; // D18{UoA/ref}
                 // If the price is below the default-threshold price, default eventually
@@ -132,6 +135,19 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
             }
         }
         return false;
+    }
+
+    function getPeg(uint8 index) public view returns (uint192) {
+        if (index >= tokensLength) revert WrongIndex(tokensLength - 1);
+        if (index == 0) return _getPeg(_targetPegFeed0);
+        if (index == 1) return _getPeg(_targetPegFeed1);
+        if (index == 2) return _getPeg(_targetPegFeed2);
+        return _getPeg(_targetPegFeed0);
+    }
+
+    function _getPeg(address feed) internal view returns (uint192) {
+        if (feed == address(0)) return targetPerRef();
+        return AggregatorV3Interface(feed).price(oracleTimeout).mul(targetPerRef());
     }
 
     function strictPrice() public view returns (uint192) {

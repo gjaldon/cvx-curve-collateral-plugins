@@ -62,10 +62,16 @@ contract PoolTokens {
     uint8 internal immutable _t2feedsLength;
     uint8 internal immutable _t3feedsLength;
 
+    address internal immutable _targetPegFeed0;
+    address internal immutable _targetPegFeed1;
+    address internal immutable _targetPegFeed2;
+    address internal immutable _targetPegFeed3;
+
     constructor(
         ERC20 _lpToken,
         address[] memory poolTokens,
         address[][] memory tokenFeeds,
+        address[] memory targetPegFeeds,
         ICurvePool _curvePool,
         uint48 _oracleTimeout
     ) {
@@ -81,6 +87,10 @@ contract PoolTokens {
             tokenFeeds.length == tokensLength && minFeedsLength(tokenFeeds) > 0,
             "each token needs at least 1 price feed"
         );
+        require(
+            targetPegFeeds.length == poolTokens.length,
+            "targetPegFeeds length must match poolTokens"
+        );
 
         curvePool = _curvePool;
         oracleTimeout = _oracleTimeout;
@@ -93,6 +103,7 @@ contract PoolTokens {
         // a gas optimization since it is significantly more expensive to read and write on the
         // blockchain than it is to use embedded values in the bytecode.
         token0 = ERC20(poolTokens[0]);
+        _targetPegFeed0 = targetPegFeeds[0];
         address[] memory token0Feeds = tokenFeeds[0];
         _t0feed0 = AggregatorV3Interface(token0Feeds.length > 0 ? token0Feeds[0] : address(0));
         _t0feed1 = AggregatorV3Interface(token0Feeds.length > 1 ? token0Feeds[1] : address(0));
@@ -100,6 +111,7 @@ contract PoolTokens {
         _t0feedsLength = uint8(token0Feeds.length);
 
         token1 = ERC20(poolTokens[1]);
+        _targetPegFeed1 = targetPegFeeds[1];
         address[] memory token1Feeds = tokenFeeds[1];
         _t1feed0 = AggregatorV3Interface(token1Feeds.length > 0 ? token1Feeds[0] : address(0));
         _t1feed1 = AggregatorV3Interface(token1Feeds.length > 1 ? token1Feeds[1] : address(0));
@@ -107,6 +119,7 @@ contract PoolTokens {
         _t1feedsLength = uint8(token1Feeds.length);
 
         token2 = ERC20(poolTokens.length > 2 ? poolTokens[2] : address(0));
+        _targetPegFeed2 = poolTokens.length > 2 ? targetPegFeeds[2] : address(0);
         address[] memory token2Feeds = address(token2) != address(0)
             ? tokenFeeds[2]
             : new address[](0);
@@ -116,6 +129,7 @@ contract PoolTokens {
         _t2feedsLength = uint8(token2Feeds.length);
 
         token3 = ERC20(poolTokens.length > 3 ? poolTokens[3] : address(0));
+        _targetPegFeed3 = poolTokens.length > 3 ? targetPegFeeds[3] : address(0);
         address[] memory token3Feeds = address(token3) != address(0)
             ? tokenFeeds[3]
             : new address[](0);
