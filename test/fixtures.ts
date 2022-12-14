@@ -13,9 +13,6 @@ import {
   USDT_USD_FEED,
   USDC_USD_FEED,
   DAI_USD_FEED,
-  DAI,
-  USDC,
-  USDT,
   THREE_POOL_TOKEN,
 } from './helpers'
 import {

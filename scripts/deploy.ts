@@ -1,23 +1,71 @@
-import { ethers } from "hardhat";
+import { ethers, network } from 'hardhat'
+import {
+  OracleLib,
+  OracleLib__factory,
+  CvxCurveStableLPCollateral,
+  CvxCurveStableLPCollateral__factory,
+  ConvexStakingWrapper,
+  ConvexStakingWrapper__factory,
+} from '../typechain-types'
+import { networkConfig } from './configuration'
 
 async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-  const unlockTime = currentTimestampInSeconds + ONE_YEAR_IN_SECS;
+  const [deployer] = await ethers.getSigners()
 
-  const lockedAmount = ethers.utils.parseEther("1");
+  console.log(`Starting full deployment on network ${network.name}`)
+  console.log(`Deployer account: ${deployer.address}\n`)
 
-  const Lock = await ethers.getContractFactory("Lock");
-  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+  const config = networkConfig[network.name]
 
-  await lock.deployed();
+  if (config.oracleLib === undefined) {
+    const OracleLibFactory: OracleLib__factory = await ethers.getContractFactory('OracleLib')
+    const oracleLib = <OracleLib>await OracleLibFactory.deploy()
+    await oracleLib.deployed()
+    config.oracleLib = oracleLib.address
+    console.log(`Wrapped oracleLib deployed to ${oracleLib.address}`)
+  }
 
-  console.log(`Lock with 1 ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`);
+  if (config.convexStakingWrapper == undefined) {
+    const CvxMiningFactory = await ethers.getContractFactory('CvxMining')
+    const cvxMining = await CvxMiningFactory.deploy()
+
+    const ConvexStakingWrapperFactory = <ConvexStakingWrapper__factory>(
+      await ethers.getContractFactory('ConvexStakingWrapper', {
+        libraries: {
+          CvxMining: cvxMining.address,
+        },
+      })
+    )
+    const convexStakingWrapper = <ConvexStakingWrapper>await ConvexStakingWrapperFactory.deploy()
+    await convexStakingWrapper.initialize(config.convexPoolId)
+    config.convexStakingWrapper = convexStakingWrapper.address
+  }
+
+  const CvxCurveStableLPCollateralFactory: CvxCurveStableLPCollateral__factory =
+    await ethers.getContractFactory('CvxCurveStableLPCollateral', {
+      libraries: { OracleLib: config.oracleLib },
+    })
+
+  const deployConfig: CvxCurveStableLPCollateral.ConfigurationStruct = {
+    ...config.collateralOpts,
+    wrappedStakeToken: config.convexStakingWrapper,
+  }
+
+  const collateral = <CvxCurveStableLPCollateral>(
+    await CvxCurveStableLPCollateralFactory.deploy(deployConfig)
+  )
+
+  console.log(
+    `Deploying CvxCurveStableLPCollateral with transaction ${collateral.deployTransaction.hash}`
+  )
+  await collateral.deployed()
+
+  console.log(
+    `CvxCurveStableLPCollateral deployed to ${collateral.address} as collateral to ${config.convexStakingWrapper}`
+  )
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
 main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+  console.error(error)
+  process.exitCode = 1
+})

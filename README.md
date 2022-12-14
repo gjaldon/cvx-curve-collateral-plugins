@@ -61,7 +61,7 @@ The collateral becomes iffy in the following scenarios:
 
 ### Deployment
 
-This comes with a [deploy script](scripts/volatile/deploy.ts) and [configuration](scripts/volatile/configuration.ts). It is already fully configured for deployment to Mainnet for WBTC-ETH pair. You may optionally set `oracleLib` if you want to use existing deployments for OracleLib.
+This comes with a template [deploy script](scripts/deploy.ts). It is already fully configured for deployment to Mainnet for the Curve TRI-POOL (DAI, USDC, USDT). You may optionally set `oracleLib` if you want to use existing deployments for OracleLib. The same can be done for `convexStakingWrapper`.
 
 ### Slither
 
