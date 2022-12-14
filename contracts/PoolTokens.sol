@@ -29,6 +29,21 @@ contract PoolTokens {
 
     uint8 constant MAX_UINT8 = 255;
 
+    enum CurvePoolType {
+        Plain,
+        Lending,
+        Metapool
+    }
+
+    struct PTConfiguration {
+        ERC20 lpToken;
+        uint8 nTokens;
+        address[][] tokenFeeds;
+        ICurvePool curvePool;
+        CurvePoolType poolType;
+        uint48 oracleTimeout;
+    }
+
     uint48 public immutable oracleTimeout; // {s} Seconds that an oracle value is considered valid
     ICurvePool public immutable curvePool;
 
@@ -39,7 +54,7 @@ contract PoolTokens {
     ERC20 internal immutable token1;
     ERC20 internal immutable token2;
     ERC20 internal immutable token3;
-    uint8 internal immutable tokensLength;
+    uint8 internal immutable nTokens;
 
     AggregatorV3Interface internal immutable _t0feed0;
     AggregatorV3Interface internal immutable _t0feed1;
@@ -62,30 +77,30 @@ contract PoolTokens {
     uint8 internal immutable _t2feedsLength;
     uint8 internal immutable _t3feedsLength;
 
-    constructor(
-        ERC20 _lpToken,
-        address[] memory poolTokens,
-        address[][] memory tokenFeeds,
-        ICurvePool _curvePool,
-        uint48 _oracleTimeout
-    ) {
-        require(_oracleTimeout > 0, "oracleTimeout zero");
-        require(address(_lpToken) != address(0), "lp token address is zero");
-        require(address(_curvePool) != address(0), "curvePool address is zero");
-        for (uint8 i = 0; i < poolTokens.length; i++) {
-            require(poolTokens[i] == _curvePool.coins(i), "tokens must match index in pool");
+    constructor(PTConfiguration memory config) {
+        require(config.oracleTimeout > 0, "oracleTimeout zero");
+        require(address(config.lpToken) != address(0), "lp token address is zero");
+        require(address(config.curvePool) != address(0), "curvePool address is zero");
+
+        curvePool = config.curvePool;
+        nTokens = config.nTokens;
+
+        address[] memory poolTokens = new address[](nTokens);
+        if (config.poolType == CurvePoolType.Plain) {
+            poolTokens = getPoolTokens(nTokens, curvePool.coins);
+        } else if (config.poolType == CurvePoolType.Lending) {
+            poolTokens = getPoolTokens(nTokens, curvePool.underlying_coins);
+        } else {
+            poolTokens = getPoolTokens(nTokens, curvePool.base_coins);
         }
-        tokensLength = uint8(poolTokens.length);
-        require(maxFeedsLength(tokenFeeds) <= 3, "price feeds limited to 3");
+
+        require(maxFeedsLength(config.tokenFeeds) <= 3, "price feeds limited to 3");
         require(
-            tokenFeeds.length == tokensLength && minFeedsLength(tokenFeeds) > 0,
+            config.tokenFeeds.length == config.nTokens && minFeedsLength(config.tokenFeeds) > 0,
             "each token needs at least 1 price feed"
         );
 
-        curvePool = _curvePool;
-        oracleTimeout = _oracleTimeout;
-
-        lpToken = _lpToken;
+        lpToken = config.lpToken;
         lpTokenDecimals = lpToken.decimals();
 
         // Solidity does not support immutable arrays. This is a hack to get the equivalent of
@@ -128,7 +143,7 @@ contract PoolTokens {
     function totalBalancesValue() public view returns (uint192) {
         uint192 totalBalances = 0;
 
-        for (uint8 i = 0; i < tokensLength; i++) {
+        for (uint8 i = 0; i < nTokens; i++) {
             ERC20 token = getToken(i);
             uint192 balance = shiftl_toFix(curvePool.balances(i), -int8(token.decimals()));
             totalBalances += balance.mul(tokenPrice(i));
@@ -137,10 +152,21 @@ contract PoolTokens {
         return totalBalances;
     }
 
-    function getBalances() public view returns (uint192[] memory) {
-        uint192[] memory balances = new uint192[](tokensLength);
+    function getPoolTokens(
+        uint8 _nTokens,
+        function(uint) external view returns (address) getCoin
+    ) internal view returns (address[] memory) {
+        address[] memory poolTokens = new address[](_nTokens);
+        for (uint8 i = 0; i < _nTokens; i++) {
+            poolTokens[i] = getCoin(i);
+        }
+        return poolTokens;
+    }
 
-        for (uint8 i = 0; i < tokensLength; i++) {
+    function getBalances() public view returns (uint192[] memory) {
+        uint192[] memory balances = new uint192[](nTokens);
+
+        for (uint8 i = 0; i < nTokens; i++) {
             ERC20 token = getToken(i);
             uint192 balance = shiftl_toFix(curvePool.balances(i), -int8(token.decimals()));
             balances[i] = (balance);
@@ -150,7 +176,7 @@ contract PoolTokens {
     }
 
     function getToken(uint8 index) public view returns (ERC20) {
-        if (index >= tokensLength) revert WrongIndex(tokensLength - 1);
+        if (index >= nTokens) revert WrongIndex(nTokens - 1);
         if (index == 0) return token0;
         if (index == 1) return token1;
         if (index == 2) return token2;
@@ -158,7 +184,7 @@ contract PoolTokens {
     }
 
     function tokenPrice(uint8 index) public view returns (uint192) {
-        if (index >= tokensLength) revert WrongIndex(tokensLength - 1);
+        if (index >= nTokens) revert WrongIndex(nTokens - 1);
         if (index == 0) return token0price();
         if (index == 1) return token1price();
         if (index == 2) return token2price();

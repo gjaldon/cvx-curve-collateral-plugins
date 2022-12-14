@@ -288,7 +288,7 @@ export const makeReserveProtocol = async () => {
 interface CollateralOpts {
   wrappedStakeToken?: string
   lpToken?: string
-  poolTokens?: string[]
+  nTokens?: number
   tokensPriceFeeds?: string[][]
   targetPegFeed?: string
   curvePool?: string
@@ -299,11 +299,12 @@ interface CollateralOpts {
   poolRatioThreshold?: bigint
   defaultThreshold?: bigint
   delayUntilDefault?: bigint
+  poolType?: number
 }
 
 const defaultOpts: CollateralOpts = {
   lpToken: THREE_POOL_TOKEN,
-  poolTokens: [DAI, USDC, USDT],
+  nTokens: 3,
   curvePool: THREE_POOL,
   tokensPriceFeeds: [[DAI_USD_FEED], [USDC_USD_FEED], [USDT_USD_FEED]],
   targetPegFeed: ethers.constants.AddressZero,

@@ -25,7 +25,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
 
     struct Configuration {
         ERC20 lpToken;
-        address[] poolTokens;
+        uint8 nTokens;
         address[][] tokensPriceFeeds;
         address targetPegFeed;
         address wrappedStakeToken;
@@ -127,7 +127,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
     }
 
     function pegNotMaintained() internal view returns (bool) {
-        for (uint8 i = 0; i < tokensLength; i++) {
+        for (uint8 i = 0; i < nTokens; i++) {
             try this.tokenPrice(i) returns (uint192 p) {
                 // Check for soft default of underlying reference token
                 uint192 peg = getPeg();
