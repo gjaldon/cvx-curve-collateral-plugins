@@ -42,6 +42,8 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
 
     IERC20Metadata public immutable erc20;
     IWrappedStakedCvx public immutable wrappedStakeToken;
+    ERC20 public immutable lpToken;
+    uint8 internal immutable lpTokenDecimals;
     uint8 public immutable erc20Decimals;
     uint192 public immutable maxTradeVolume; // {UoA}
     uint192 public immutable fallbackPrice; // {UoA}
@@ -55,6 +57,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
     address public immutable targetPegFeed;
 
     constructor(Configuration memory config) PoolTokens(ptConfig(config)) {
+        require(address(config.lpToken) != address(0), "lp token address is zero");
         require(config.wrappedStakeToken != address(0), "wrappedStakeToken address is zero");
         require(config.fallbackPrice > 0, "fallback price zero");
         require(config.maxTradeVolume > 0, "invalid max trade volume");
@@ -73,6 +76,8 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         defaultThreshold = config.defaultThreshold;
         poolRatioThreshold = config.poolRatioThreshold;
         targetPegFeed = config.targetPegFeed;
+        lpToken = config.lpToken;
+        lpTokenDecimals = lpToken.decimals();
 
         prevReferencePrice = refPerTok();
     }

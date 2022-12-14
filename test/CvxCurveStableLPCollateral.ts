@@ -22,7 +22,6 @@ import {
   COMP,
   MAX_TRADE_VOL,
   RSR,
-  WETH,
   ETH_USD_FEED,
   CVX_3CRV_HOLDER,
   CVX_3CRV,

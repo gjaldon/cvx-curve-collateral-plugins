@@ -53,9 +53,6 @@ contract PoolTokens {
     uint48 public immutable oracleTimeout; // {s} Seconds that an oracle value is considered valid
     ICurvePool public immutable curvePool;
 
-    ERC20 public immutable lpToken;
-    uint8 internal immutable lpTokenDecimals;
-
     ERC20 internal immutable token0;
     ERC20 internal immutable token1;
     ERC20 internal immutable token2;
@@ -85,11 +82,16 @@ contract PoolTokens {
 
     constructor(PTConfiguration memory config) {
         require(config.oracleTimeout > 0, "oracleTimeout zero");
-        require(address(config.lpToken) != address(0), "lp token address is zero");
+        require(maxFeedsLength(config.tokenFeeds) <= 3, "price feeds limited to 3");
+        require(
+            config.tokenFeeds.length == config.nTokens && minFeedsLength(config.tokenFeeds) > 0,
+            "each token needs at least 1 price feed"
+        );
         require(address(config.curvePool) != address(0), "curvePool address is zero");
 
         curvePool = config.curvePool;
         nTokens = config.nTokens;
+        oracleTimeout = config.oracleTimeout;
 
         address[] memory poolTokens = new address[](nTokens);
         if (config.poolType == CurvePoolType.Plain) {
@@ -99,16 +101,6 @@ contract PoolTokens {
         } else {
             poolTokens = getPoolTokens(nTokens, curvePool.base_coins);
         }
-
-        require(maxFeedsLength(config.tokenFeeds) <= 3, "price feeds limited to 3");
-        require(
-            config.tokenFeeds.length == config.nTokens && minFeedsLength(config.tokenFeeds) > 0,
-            "each token needs at least 1 price feed"
-        );
-
-        lpToken = config.lpToken;
-        lpTokenDecimals = lpToken.decimals();
-        oracleTimeout = config.oracleTimeout;
 
         // Solidity does not support immutable arrays. This is a hack to get the equivalent of
         // an immutable array so we do not have store the token feeds in the blockchain. This is
