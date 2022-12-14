@@ -6,6 +6,8 @@ import "../PoolTokens.sol";
 contract CurvePoolMock is ICurvePool {
     uint[] internal _balances;
     address[] public coins;
+    address[] public underlying_coins;
+    address[] public base_coins;
 
     constructor(uint[] memory intialBalances, address[] memory _coins) {
         _balances = intialBalances;

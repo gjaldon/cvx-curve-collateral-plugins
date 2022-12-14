@@ -4,6 +4,8 @@ import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers'
 // Mainnet Addresses
 export const THREE_POOL = '0xbebc44782c7db0a1a60cb6fe97d0b483032ff1c7'
 export const THREE_POOL_TOKEN = '0x6c3F90f043a72FA612cbac8115EE7e52BDe6E490'
+export const BBTC_POOL = '0x071c661B4DeefB59E2a3DdB20Db036821eeE8F4b'
+export const AAVE_POOL = '0xDeBF20617708857ebe4F679508E7b7863a8A8EeE'
 export const DAI_USD_FEED = '0xAed0c38402a5d19df6E4c03F4E2DceD6e29c1ee9'
 export const USDC_USD_FEED = '0x8fFfFfd4AfB6115b954Bd326cbe7B4BA576818f6'
 export const USDT_USD_FEED = '0x3E7d1eAB13ad0104d2750B8863b489D65364e32D'

@@ -315,6 +315,7 @@ const defaultOpts: CollateralOpts = {
   poolRatioThreshold: exp(3, 17), // 30%
   defaultThreshold: DEFAULT_THRESHOLD,
   delayUntilDefault: DELAY_UNTIL_DEFAULT,
+  poolType: 0,
 }
 
 export const deployCollateral = async (

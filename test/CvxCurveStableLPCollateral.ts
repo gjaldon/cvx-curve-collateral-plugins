@@ -28,6 +28,8 @@ import {
   CVX_3CRV,
   CVX,
   CRV,
+  BBTC_POOL,
+  AAVE_POOL,
 } from './helpers'
 
 const ERC20 = '@openzeppelin/contracts/token/ERC20/ERC20.sol:ERC20'
@@ -56,12 +58,6 @@ describe('CvxCurveStableLPCollateral', () => {
       await expect(
         deployCollateral({ curvePool: ethers.constants.AddressZero })
       ).to.be.revertedWith('curvePool address is zero')
-    })
-
-    it('does not allow tokens that do not match tokens in pool', async () => {
-      await expect(deployCollateral({ poolTokens: [USDC] })).to.be.revertedWith(
-        'tokens must match index in pool'
-      )
     })
 
     it('must have feeds limited to 3', async () => {
@@ -104,6 +100,35 @@ describe('CvxCurveStableLPCollateral', () => {
       await expect(deployCollateral({ fallbackPrice: 0n })).to.be.revertedWith(
         'fallback price zero'
       )
+    })
+  })
+
+  describe('sets correct tokens according to Pool Type', () => {
+    it('sets coins for Plain Pools', async () => {
+      const collateral = await deployCollateral({ poolType: 0, curvePool: THREE_POOL })
+      const curvePool = await ethers.getContractAt('ICurvePool', THREE_POOL)
+
+      expect(await curvePool.coins(0)).to.eq(await collateral.getToken(0))
+      expect(await curvePool.coins(1)).to.eq(await collateral.getToken(1))
+      expect(await curvePool.coins(2)).to.eq(await collateral.getToken(2))
+    })
+
+    it('sets underlying coins for Lending Pools', async () => {
+      const collateral = await deployCollateral({ poolType: 1, curvePool: AAVE_POOL })
+      const curvePool = await ethers.getContractAt('ICurvePool', AAVE_POOL)
+
+      expect(await curvePool.underlying_coins(0)).to.eq(await collateral.getToken(0))
+      expect(await curvePool.underlying_coins(1)).to.eq(await collateral.getToken(1))
+      expect(await curvePool.underlying_coins(2)).to.eq(await collateral.getToken(2))
+    })
+
+    it('sets base coins for Metapools', async () => {
+      const collateral = await deployCollateral({ poolType: 2, curvePool: BBTC_POOL })
+      const curvePool = await ethers.getContractAt('ICurvePool', BBTC_POOL)
+
+      expect(await curvePool.base_coins(0)).to.eq(await collateral.getToken(0))
+      expect(await curvePool.base_coins(1)).to.eq(await collateral.getToken(1))
+      expect(await curvePool.base_coins(2)).to.eq(await collateral.getToken(2))
     })
   })
 

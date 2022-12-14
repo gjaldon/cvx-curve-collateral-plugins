@@ -11,6 +11,12 @@ import "hardhat/console.sol";
 interface ICurvePool {
     function coins(uint) external view returns (address);
 
+    // Only exists in Curve Lending Pools
+    function underlying_coins(uint) external view returns (address);
+
+    // Only exists in Curve Metapools
+    function base_coins(uint) external view returns (address);
+
     function balances(uint) external view returns (uint256);
 
     function get_virtual_price() external view returns (uint256);
@@ -102,20 +108,21 @@ contract PoolTokens {
 
         lpToken = config.lpToken;
         lpTokenDecimals = lpToken.decimals();
+        oracleTimeout = config.oracleTimeout;
 
         // Solidity does not support immutable arrays. This is a hack to get the equivalent of
         // an immutable array so we do not have store the token feeds in the blockchain. This is
         // a gas optimization since it is significantly more expensive to read and write on the
         // blockchain than it is to use embedded values in the bytecode.
         token0 = ERC20(poolTokens[0]);
-        address[] memory token0Feeds = tokenFeeds[0];
+        address[] memory token0Feeds = config.tokenFeeds[0];
         _t0feed0 = AggregatorV3Interface(token0Feeds.length > 0 ? token0Feeds[0] : address(0));
         _t0feed1 = AggregatorV3Interface(token0Feeds.length > 1 ? token0Feeds[1] : address(0));
         _t0feed2 = AggregatorV3Interface(token0Feeds.length > 2 ? token0Feeds[2] : address(0));
         _t0feedsLength = uint8(token0Feeds.length);
 
         token1 = ERC20(poolTokens[1]);
-        address[] memory token1Feeds = tokenFeeds[1];
+        address[] memory token1Feeds = config.tokenFeeds[1];
         _t1feed0 = AggregatorV3Interface(token1Feeds.length > 0 ? token1Feeds[0] : address(0));
         _t1feed1 = AggregatorV3Interface(token1Feeds.length > 1 ? token1Feeds[1] : address(0));
         _t1feed2 = AggregatorV3Interface(token1Feeds.length > 2 ? token1Feeds[2] : address(0));
@@ -123,7 +130,7 @@ contract PoolTokens {
 
         token2 = ERC20(poolTokens.length > 2 ? poolTokens[2] : address(0));
         address[] memory token2Feeds = address(token2) != address(0)
-            ? tokenFeeds[2]
+            ? config.tokenFeeds[2]
             : new address[](0);
         _t2feed0 = AggregatorV3Interface(token2Feeds.length > 0 ? token2Feeds[0] : address(0));
         _t2feed1 = AggregatorV3Interface(token2Feeds.length > 1 ? token2Feeds[1] : address(0));
@@ -132,7 +139,7 @@ contract PoolTokens {
 
         token3 = ERC20(poolTokens.length > 3 ? poolTokens[3] : address(0));
         address[] memory token3Feeds = address(token3) != address(0)
-            ? tokenFeeds[3]
+            ? config.tokenFeeds[3]
             : new address[](0);
         _t3feed0 = AggregatorV3Interface(token3Feeds.length > 0 ? token3Feeds[0] : address(0));
         _t3feed1 = AggregatorV3Interface(token3Feeds.length > 1 ? token3Feeds[1] : address(0));

@@ -37,6 +37,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
         uint192 defaultThreshold;
         uint192 poolRatioThreshold;
         uint256 delayUntilDefault;
+        CurvePoolType poolType;
     }
 
     IERC20Metadata public immutable erc20;
@@ -53,17 +54,7 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
     bytes32 public immutable targetName;
     address public immutable targetPegFeed;
 
-    constructor(
-        Configuration memory config
-    )
-        PoolTokens(
-            config.lpToken,
-            config.poolTokens,
-            config.tokensPriceFeeds,
-            config.curvePool,
-            config.oracleTimeout
-        )
-    {
+    constructor(Configuration memory config) PoolTokens(ptConfig(config)) {
         require(config.wrappedStakeToken != address(0), "wrappedStakeToken address is zero");
         require(config.fallbackPrice > 0, "fallback price zero");
         require(config.maxTradeVolume > 0, "invalid max trade volume");
@@ -109,6 +100,18 @@ contract CvxCurveStableLPCollateral is PoolTokens, ICollateral {
             emit CollateralStatusChanged(oldStatus, newStatus);
         }
         // No interactions beyond the initial refresher
+    }
+
+    function ptConfig(Configuration memory config) internal pure returns (PTConfiguration memory) {
+        return
+            PTConfiguration({
+                lpToken: config.lpToken,
+                nTokens: config.nTokens,
+                tokenFeeds: config.tokensPriceFeeds,
+                curvePool: config.curvePool,
+                poolType: config.poolType,
+                oracleTimeout: config.oracleTimeout
+            });
     }
 
     function unbalancedBeyondTreshold() internal view returns (bool) {
