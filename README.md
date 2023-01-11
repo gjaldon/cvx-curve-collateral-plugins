@@ -63,6 +63,23 @@ The collateral becomes iffy in the following scenarios:
 
 This comes with a template [deploy script](scripts/deploy.ts). It is already fully configured for deployment to Mainnet for the Curve TRI-POOL (DAI, USDC, USDT). You may optionally set `oracleLib` if you want to use existing deployments for OracleLib. The same can be done for `convexStakingWrapper`.
 
+### Setup
+
+For the contracts to compile, run the following:
+
+```
+$ npm install
+$ npx hardhat compile
+```
+
+To run the tests and/or the deployment scripts, a `.env` file is expected with the following environment variables:
+
+- MAINNET_RPC_URL - an RPC URL for ethereum mainnet
+- MNEMONIC - mnemonic phrase for the private key
+- GOERLI_RPC_URL - an RPC URL for ethereum goerli
+
+Once `.env` is setup and dependencies are installed, tests can be run with: `npx hardhat test` or `npm run test`
+
 ### Slither
 
 Below are Slither warnings that were hidden since they were found to be non-issues.
